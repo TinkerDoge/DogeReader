@@ -33,11 +33,11 @@ CardMeaning TarotAssets::getMeaning(int8_t id) const {
     
     if (!loaded) return result;
 
-    JsonArrayConst cards = meaningsDoc["cards"].as<JsonArrayConst>();
+    JsonArrayConst cards = meaningsDoc.as<JsonArrayConst>();
     for (JsonObjectConst card : cards) {
         if (card["id"] == id) {
             result.name = card["name"] | "Unknown";
-            result.meaning = card["desc"] | "No meaning found.";
+            result.meaning = card["meaning"] | "No meaning found.";
             break;
         }
     }
