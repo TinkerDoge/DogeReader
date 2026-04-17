@@ -1,3 +1,21 @@
+# Tarot Card Extraction Script
+
+This script extracts each page from a PDF (e.g., Rider-Waite-Tarot-Cards-Printable.pdf), resizes/crops/pads to 800x480, and saves as BMP files for device compatibility.
+
+## Usage
+
+```
+python scripts/extract_tarot_cards.py Rider-Waite-Tarot-Cards-Printable.pdf tarot/cards
+```
+
+- Output files: tarot/cards/0.bmp, 1.bmp, ...
+- Requires: Python 3, PyMuPDF, Pillow
+
+## Install dependencies
+
+```
+pip install pymupdf pillow
+```
 # CrossPoint Reader
 
 Firmware for the **Xteink X4** e-paper display reader (unaffiliated with Xteink).
