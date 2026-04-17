@@ -242,12 +242,12 @@ void TarotActivity::renderMain(const ThemeMetrics& metrics, int pageWidth, int p
 void TarotActivity::renderGrid(const ThemeMetrics& metrics, int pageWidth, int pageHeight) {
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TAROT_HISTORY));
 
-    int thumbW = 100;
-    int thumbH = 170;
-    int cols = 3;
-    int rows = 4;
-    int spacingX = 30;
-    int spacingY = 15;
+    int thumbW = 80;
+    int thumbH = 133;
+    int cols = 4;
+    int rows = 5;
+    int spacingX = 20;
+    int spacingY = 12;
     int startX = (pageWidth - (thumbW * cols + spacingX * (cols - 1))) / 2;
     int startY = metrics.headerHeight + 20;
 
