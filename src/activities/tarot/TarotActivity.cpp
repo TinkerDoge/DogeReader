@@ -7,7 +7,7 @@
 #include "fontIds.h"
 
 TarotActivity::TarotActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : Activity("Tarot", renderer, mappedInput), showMeaning(false), firstRenderDone(false), currentCardId(-1) {}
+    : Activity("Tarot", renderer, mappedInput), showMeaning(false), firstRenderDone(false), currentCardId(-1), viewState(Main), gridPage(0) {}
 
 void TarotActivity::onEnter() {
     Activity::onEnter();

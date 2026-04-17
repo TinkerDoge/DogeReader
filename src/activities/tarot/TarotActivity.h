@@ -22,8 +22,15 @@ private:
     
     // UI state
     int8_t currentCardId;
+    
+    enum ViewState { Main, Grid };
+    ViewState viewState;
+    int gridPage;
 
     void drawNextCard();
     void toggleMeaning();
     void showHistory();
+    
+    void renderMain();
+    void renderGrid();
 };
