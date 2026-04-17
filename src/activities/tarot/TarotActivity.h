@@ -3,6 +3,7 @@
 #include "../Activity.h"
 #include "TarotDeck.h"
 #include "TarotAssets.h"
+#include "components/themes/BaseTheme.h"
 #include "util/ButtonNavigator.h"
 
 class TarotActivity : public Activity {
@@ -17,20 +18,21 @@ public:
 private:
     TarotDeck deck;
     TarotAssets assets;
+    enum class ViewState { DrawPrompt, Main, HistoryGrid };
+    ViewState viewState = ViewState::DrawPrompt;
+
     bool showMeaning;
     bool firstRenderDone;
+    bool isDrawing = false;
     
     // UI state
     int8_t currentCardId;
-    
-    enum ViewState { Main, Grid };
-    ViewState viewState;
-    int gridPage;
+    std::vector<int8_t> history;
+    int gridPageIndex = 0;
 
     void drawNextCard();
     void toggleMeaning();
-    void showHistory();
-    
-    void renderMain();
-    void renderGrid();
+    void renderMain(const ThemeMetrics& metrics, int pageWidth, int pageHeight);
+    void renderGrid(const ThemeMetrics& metrics, int pageWidth, int pageHeight);
+    void renderPrompt(const ThemeMetrics& metrics, int pageWidth, int pageHeight);
 };

@@ -89,6 +89,7 @@ class ActivityManager {
   void goToCrashReport();
   void goHome();
   void goToTarot();
+  void goToApps();
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

@@ -5,14 +5,18 @@
 #include <I18n.h>
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include <algorithm>
 
 TarotActivity::TarotActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : Activity("Tarot", renderer, mappedInput), showMeaning(false), firstRenderDone(false), currentCardId(-1), viewState(Main), gridPage(0) {}
+    : Activity("Tarot", renderer, mappedInput), viewState(ViewState::DrawPrompt), 
+      showMeaning(false), firstRenderDone(false), currentCardId(-1), gridPageIndex(0), isDrawing(false) {}
 
 void TarotActivity::onEnter() {
     Activity::onEnter();
     deck.shuffle();
     assets.loadMeanings();
+    viewState = ViewState::DrawPrompt;
+    history.clear();
     requestUpdate();
 }
 
@@ -23,19 +27,37 @@ void TarotActivity::onExit() {
 void TarotActivity::loop() {
     Activity::loop();
 
-    if (viewState == Main) {
-        if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-            if (showMeaning) showMeaning = false;
+    if (viewState == ViewState::DrawPrompt) {
+        if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+            // Consistent with main view, Right button (btn4) is Draw
             drawNextCard();
         }
-        if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+            finish();
+        }
+    } else if (viewState == ViewState::Main) {
+        if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+            // Button 4 (Right) is Draw
+            if (showMeaning) {
+                showMeaning = false;
+            }
+            drawNextCard();
+        }
+
+        if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+            // Button 3 (Left) is Meaning
             toggleMeaning();
         }
-        if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-            viewState = Grid;
-            gridPage = 0;
-            requestUpdate();
+
+        if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+            // Button 2 (Confirm) is History
+            if (!history.empty()) {
+                viewState = ViewState::HistoryGrid;
+                gridPageIndex = 0;
+                requestUpdate();
+            }
         }
+
         if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
             if (showMeaning) {
                 showMeaning = false;
@@ -44,26 +66,38 @@ void TarotActivity::loop() {
                 finish();
             }
         }
-    } else if (viewState == Grid) {
-        if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasReleased(MappedInputManager::Button::Right)) { // Next Page
-            gridPage++;
-            requestUpdate();
-        }
-        if (mappedInput.wasReleased(MappedInputManager::Button::Up) || mappedInput.wasReleased(MappedInputManager::Button::Left)) { // Prev Page
-            gridPage--;
-            if (gridPage < 0) gridPage = 0;
-            requestUpdate();
-        }
+    } else if (viewState == ViewState::HistoryGrid) {
         if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-            viewState = Main;
+            viewState = ViewState::Main;
             requestUpdate();
+        }
+        if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+            if (gridPageIndex > 0) {
+                gridPageIndex--;
+                requestUpdate();
+            }
+        }
+        if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+            int maxPage = (history.size() - 1) / 12;
+            if (gridPageIndex < maxPage) {
+                gridPageIndex++;
+                requestUpdate();
+            }
         }
     }
 }
 
 void TarotActivity::drawNextCard() {
+    isDrawing = true;
+    requestUpdateAndWait(); // Render the toast
+
     currentCardId = deck.drawNext();
+    if (currentCardId != -1) {
+        history.insert(history.begin(), currentCardId);
+        viewState = ViewState::Main;
+    }
     showMeaning = false;
+    isDrawing = false;
     requestUpdate();
 }
 
@@ -75,155 +109,174 @@ void TarotActivity::toggleMeaning() {
 }
 
 void TarotActivity::render(RenderLock&& lock) {
-    renderer.clearScreen();
-    if (viewState == Main) {
-        renderMain();
-    } else if (viewState == Grid) {
-        renderGrid();
-    }
-    renderer.displayBuffer(firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FULL_REFRESH);
-    firstRenderDone = true;
-}
-
-void TarotActivity::renderMain() {
     const auto pageWidth = renderer.getScreenWidth();
     const auto pageHeight = renderer.getScreenHeight();
     const auto& metrics = UITheme::getInstance().getMetrics();
 
-    // 1. Draw Top Row History (Up to 5 cards)
-    auto history = deck.getHistory(6); // Fetch 6 to know if we need a stack effect
-    int maxThumbnails = 5;
-    int thumbW = 50;
-    int thumbH = 80;
-    int spacing = 10;
-    int startIdx = 1; // skip current card (history[0])
-    int numToDraw = std::min((int)history.size() - startIdx, maxThumbnails);
-    if (numToDraw < 0) numToDraw = 0;
-    
-    int totalWidth = numToDraw * thumbW + (numToDraw - 1) * spacing;
-    if (totalWidth < 0) totalWidth = 0;
-    int startX = (pageWidth - totalWidth) / 2;
-    int startY = metrics.topPadding + 5;
-
-    for (int i = 0; i < numToDraw; ++i) {
-        int histIdx = startIdx + (numToDraw - 1 - i); // Draw oldest to newest left to right
-        int cardId = history[histIdx];
-        int x = startX + i * (thumbW + spacing);
-        
-        // Draw stack effect on the first thumbnail if we have more than 5 history items
-        if (i == 0 && history.size() > (size_t)(maxThumbnails + 1)) {
-            renderer.drawRect(x - 3, startY + 3, thumbW, thumbH, true);
-        }
-        
-        FsFile file;
-        if (Storage.openFileForRead("TAROT", assets.getCardImagePath(cardId), file)) {
-            Bitmap bitmap(file, true);
-            if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-                renderer.drawBitmap(bitmap, x, startY, thumbW, thumbH, 0, 0);
-            }
-            file.close();
-        }
-        renderer.drawRect(x, startY, thumbW, thumbH, true); // Frame
+    if (isDrawing) {
+        GUI.drawPopup(renderer, tr(STR_TAROT_DRAWING));
+        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        return;
     }
 
-    // 2. Draw Main Card (scaled down)
-    int mainCardW = 200;
-    int mainCardH = 340;
-    int mainX = (pageWidth - mainCardW) / 2;
-    int mainY = startY + thumbH + 20;
+    renderer.clearScreen();
 
-    if (currentCardId == -1) {
+    switch (viewState) {
+        case ViewState::DrawPrompt:
+            renderPrompt(metrics, pageWidth, pageHeight);
+            break;
+        case ViewState::Main:
+            renderMain(metrics, pageWidth, pageHeight);
+            break;
+        case ViewState::HistoryGrid:
+            renderGrid(metrics, pageWidth, pageHeight);
+            break;
+    }
+
+    // Use FAST_REFRESH even on entry to avoid the "shuffle animation" (full refresh blink)
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    firstRenderDone = true;
+}
+
+void TarotActivity::renderPrompt(const ThemeMetrics& metrics, int pageWidth, int pageHeight) {
+    renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 3, tr(STR_TAROT_TITLE), true, EpdFontFamily::BOLD);
+    
+    FsFile file;
+    if (Storage.openFileForRead("TAROT", assets.getBackImagePath(), file)) {
+        Bitmap bitmap(file, true);
+        if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+            int x = (pageWidth - bitmap.getWidth()) / 2;
+            int y = (pageHeight - bitmap.getHeight()) / 2 - 20;
+            renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight);
+        }
+        file.close();
+    }
+
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight * 3 / 4, tr(STR_TAROT_SHUFFLE));
+    
+    // Consistent with Main view: btn1=Back, btn2="", btn3="", btn4=Draw
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", tr(STR_TAROT_DRAW));
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+void TarotActivity::renderMain(const ThemeMetrics& metrics, int pageWidth, int pageHeight) {
+    // 1. Draw History Row
+    int thumbW = 80;
+    int thumbSpacing = 12;
+    int startX = (pageWidth - (thumbW * 5 + thumbSpacing * 4)) / 2;
+    int thumbY = metrics.topPadding + 10;
+
+    for (int i = 0; i < 5 && (i + 1) < history.size(); i++) {
+        int x = startX + i * (thumbW + thumbSpacing);
+        int8_t cardId = history[i + 1];
+        
         FsFile file;
-        if (Storage.openFileForRead("TAROT", assets.getBackImagePath(), file)) {
+        if (Storage.openFileForRead("TAROT", assets.getCardThumbPath(cardId), file)) {
             Bitmap bitmap(file, true);
             if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-                renderer.drawBitmap(bitmap, mainX, mainY, mainCardW, mainCardH, 0, 0);
+                renderer.drawBitmap(bitmap, x, thumbY, thumbW, thumbW * 1.7);
             }
             file.close();
-        } else {
-            renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 2, tr(STR_TAROT_SHUFFLE));
         }
-    } else {
+        
+        if (i == 4 && history.size() > 6) {
+            renderer.drawRect(x - 4, thumbY - 4, thumbW, thumbW * 1.7, 1, true);
+            renderer.drawRect(x - 8, thumbY - 8, thumbW, thumbW * 1.7, 1, true);
+        }
+    }
+
+    // 2. Draw Main Card
+    if (currentCardId != -1) {
         FsFile file;
         if (Storage.openFileForRead("TAROT", assets.getCardImagePath(currentCardId), file)) {
             Bitmap bitmap(file, true);
             if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-                renderer.drawBitmap(bitmap, mainX, mainY, mainCardW, mainCardH, 0, 0);
+                int drawW = 320;
+                int drawH = 533; 
+                int x = (pageWidth - drawW) / 2;
+                int y = thumbY + 160;
+
+                renderer.drawBitmap(bitmap, x, y, drawW, drawH);
+                renderer.drawRect(x - 2, y - 2, drawW + 4, drawH + 4, 2, true); // Frame
+                
+                auto m = assets.getMeaning(currentCardId);
+                char label[128];
+                snprintf(label, sizeof(label), "%s  |  Card %d of 78", m.name.c_str(), currentCardId + 1);
+                renderer.drawCenteredText(UI_10_FONT_ID, y + drawH + 20, label, true, EpdFontFamily::BOLD);
             }
             file.close();
         }
-        // 2px frame
-        renderer.drawRect(mainX - 1, mainY - 1, mainCardW + 2, mainCardH + 2, true);
-        renderer.drawRect(mainX - 2, mainY - 2, mainCardW + 4, mainCardH + 4, true);
-
-        // Name and Number
-        auto m = assets.getMeaning(currentCardId);
-        char labelBuf[128];
-        snprintf(labelBuf, sizeof(labelBuf), "%s • %d/78", m.name.c_str(), currentCardId + 1);
-        renderer.drawCenteredText(UI_12_FONT_ID, mainY + mainCardH + 15, labelBuf);
     }
 
-    // 3. Meaning Overlay
+    // 3. Meaning Overlay (Custom Box)
     if (showMeaning && currentCardId != -1) {
         auto m = assets.getMeaning(currentCardId);
-        Rect popup = GUI.drawPopup(renderer, m.name.c_str());
-        renderer.drawText(BOOKERLY_14_FONT_ID, popup.x + 10, popup.y + 40, m.meaning.c_str(), popup.width - 20);
+        
+        int boxW = pageWidth - 60;
+        int boxH = 280;
+        int boxX = (pageWidth - boxW) / 2;
+        int boxY = (pageHeight - boxH) / 2;
+
+        // Shadow/Border
+        renderer.fillRoundedRect(boxX - 2, boxY - 2, boxW + 4, boxH + 4, 10, Color::Black);
+        renderer.fillRoundedRect(boxX, boxY, boxW, boxH, 8, Color::White);
+
+        renderer.drawCenteredText(UI_12_FONT_ID, boxY + 20, m.name.c_str(), true, EpdFontFamily::BOLD);
+        renderer.drawLine(boxX + 30, boxY + 55, boxX + boxW - 30, boxY + 55, 1, true);
+
+        // Correctly wrap the meaning text
+        auto lines = renderer.wrappedText(BOOKERLY_14_FONT_ID, m.meaning.c_str(), boxW - 50, 6);
+        int currentY = boxY + 80;
+        int lineHeight = renderer.getLineHeight(BOOKERLY_14_FONT_ID) + 4;
+        for (const auto& line : lines) {
+            renderer.drawText(BOOKERLY_14_FONT_ID, boxX + 25, currentY, line.c_str());
+            currentY += lineHeight;
+        }
     }
 
-    // 4. Hints
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TAROT_DRAW), tr(STR_TAROT_MEANING), "");
+    // 4. Hints - [Back] [History] [Meaning] [Draw]
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TAROT_HISTORY), tr(STR_TAROT_MEANING), tr(STR_TAROT_DRAW));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
-void TarotActivity::renderGrid() {
-    const auto pageWidth = renderer.getScreenWidth();
-    const auto& metrics = UITheme::getInstance().getMetrics();
-    
-    renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, metrics.topPadding + 5, "History Grid");
-    
-    auto history = deck.getHistory(78);
-    // Ignore history[0] which is current card, start from history[1]
-    int startIdx = 1;
-    int numItems = std::max(0, (int)history.size() - startIdx);
-    
-    int itemsPerPage = 12; // 3x4 grid
-    int totalPages = (numItems + itemsPerPage - 1) / itemsPerPage;
-    if (gridPage >= totalPages) gridPage = std::max(0, totalPages - 1);
-    
-    int cols = 3;
+void TarotActivity::renderGrid(const ThemeMetrics& metrics, int pageWidth, int pageHeight) {
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TAROT_HISTORY));
+
     int thumbW = 100;
-    int thumbH = 160;
-    int spacingX = 20;
-    int spacingY = 20;
-    int startX = (pageWidth - (cols * thumbW + (cols - 1) * spacingX)) / 2;
-    int startY = metrics.topPadding + 40;
-    
-    int pageStartIdx = startIdx + gridPage * itemsPerPage;
-    int pageEndIdx = std::min(startIdx + numItems, pageStartIdx + itemsPerPage);
-    
-    for (int i = pageStartIdx; i < pageEndIdx; ++i) {
-        int relIdx = i - pageStartIdx;
-        int row = relIdx / cols;
-        int col = relIdx % cols;
+    int thumbH = 170;
+    int cols = 3;
+    int rows = 4;
+    int spacingX = 30;
+    int spacingY = 15;
+    int startX = (pageWidth - (thumbW * cols + spacingX * (cols - 1))) / 2;
+    int startY = metrics.headerHeight + 20;
+
+    int itemsPerPage = cols * rows;
+    int startIdx = gridPageIndex * itemsPerPage;
+
+    for (int i = 0; i < itemsPerPage && (startIdx + i) < history.size(); i++) {
+        int8_t cardId = history[startIdx + i];
+        int col = i % cols;
+        int row = i / cols;
         int x = startX + col * (thumbW + spacingX);
         int y = startY + row * (thumbH + spacingY);
-        
-        int cardId = history[i];
+
         FsFile file;
-        if (Storage.openFileForRead("TAROT", assets.getCardImagePath(cardId), file)) {
+        if (Storage.openFileForRead("TAROT", assets.getCardThumbPath(cardId), file)) {
             Bitmap bitmap(file, true);
             if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-                renderer.drawBitmap(bitmap, x, y, thumbW, thumbH, 0, 0);
+                renderer.drawBitmap(bitmap, x, y, thumbW, thumbH);
+                renderer.drawRect(x, y, thumbW, thumbH, 1, true);
             }
             file.close();
         }
-        renderer.drawRect(x, y, thumbW, thumbH, true);
     }
-    
-    char pageBuf[32];
-    snprintf(pageBuf, sizeof(pageBuf), "Page %d/%d", gridPage + 1, std::max(1, totalPages));
-    renderer.drawCenteredText(UI_10_FONT_ID, renderer.getScreenHeight() - 40, pageBuf);
-    
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "Next Page", "Prev Page", "");
+
+    int totalPages = (history.size() + itemsPerPage - 1) / itemsPerPage;
+    char pageStr[32];
+    snprintf(pageStr, sizeof(pageStr), "Page %d / %d", gridPageIndex + 1, totalPages);
+    renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - metrics.buttonHintsHeight - 15, pageStr);
+
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", tr(STR_PREV), tr(STR_NEXT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }

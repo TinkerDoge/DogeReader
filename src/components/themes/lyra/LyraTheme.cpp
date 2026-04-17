@@ -26,6 +26,8 @@
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/wifi.h"
+#include "components/icons/apps.h"
+#include "components/icons/tarot-card.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -100,6 +102,10 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return WifiIcon;
       case UIIcon::Hotspot:
         return HotspotIcon;
+      case UIIcon::AppsMenu:
+        return Apps;
+      case UIIcon::Tarot:
+        return TarotCard;
       default:
         return nullptr;
     }

@@ -51,6 +51,12 @@ std::string TarotAssets::getCardImagePath(int8_t id) const {
     return std::string(path);
 }
 
+std::string TarotAssets::getCardThumbPath(int8_t id) const {
+    char path[32];
+    snprintf(path, sizeof(path), "/tarot/thumbs/%d.bmp", id);
+    return std::string(path);
+}
+
 std::string TarotAssets::getBackImagePath() const {
     return "/tarot/back.bmp";
 }

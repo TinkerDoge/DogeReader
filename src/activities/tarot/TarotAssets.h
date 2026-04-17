@@ -20,6 +20,7 @@ public:
 
     // Returns the path to the BMP image for a specific card ID
     std::string getCardImagePath(int8_t id) const;
+    std::string getCardThumbPath(int8_t id) const;
 
     // Returns the path to the back of the card image
     std::string getBackImagePath() const;
