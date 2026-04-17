@@ -23,31 +23,39 @@ void TarotActivity::onExit() {
 void TarotActivity::loop() {
     Activity::loop();
 
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-        if (showMeaning) {
-            showMeaning = false;
+    if (viewState == Main) {
+        if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+            if (showMeaning) showMeaning = false;
+            drawNextCard();
         }
-        drawNextCard();
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-        toggleMeaning();
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-        if (showMeaning) {
-            showMeaning = false;
+        if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+            toggleMeaning();
+        }
+        if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+            viewState = Grid;
+            gridPage = 0;
             requestUpdate();
-        } else {
-            finish();
         }
-    }
-
-    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-        if (deck.getCurrentIndex() > 0) {
-            currentCardId = deck.getFromHistory(1); // Since getFromHistory(1) is relative to current
-            // Actually, my TarotDeck logic is simple. I should probably just track browsingIndex.
-            // For now, let's just draw the next one as requested.
+        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+            if (showMeaning) {
+                showMeaning = false;
+                requestUpdate();
+            } else {
+                finish();
+            }
+        }
+    } else if (viewState == Grid) {
+        if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasReleased(MappedInputManager::Button::Right)) { // Next Page
+            gridPage++;
+            requestUpdate();
+        }
+        if (mappedInput.wasReleased(MappedInputManager::Button::Up) || mappedInput.wasReleased(MappedInputManager::Button::Left)) { // Prev Page
+            gridPage--;
+            if (gridPage < 0) gridPage = 0;
+            requestUpdate();
+        }
+        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+            viewState = Main;
             requestUpdate();
         }
     }
@@ -164,5 +172,58 @@ void TarotActivity::renderMain() {
 
     // 4. Hints
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TAROT_DRAW), tr(STR_TAROT_MEANING), "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+void TarotActivity::renderGrid() {
+    const auto pageWidth = renderer.getScreenWidth();
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    
+    renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, metrics.topPadding + 5, "History Grid");
+    
+    auto history = deck.getHistory(78);
+    // Ignore history[0] which is current card, start from history[1]
+    int startIdx = 1;
+    int numItems = std::max(0, (int)history.size() - startIdx);
+    
+    int itemsPerPage = 12; // 3x4 grid
+    int totalPages = (numItems + itemsPerPage - 1) / itemsPerPage;
+    if (gridPage >= totalPages) gridPage = std::max(0, totalPages - 1);
+    
+    int cols = 3;
+    int thumbW = 100;
+    int thumbH = 160;
+    int spacingX = 20;
+    int spacingY = 20;
+    int startX = (pageWidth - (cols * thumbW + (cols - 1) * spacingX)) / 2;
+    int startY = metrics.topPadding + 40;
+    
+    int pageStartIdx = startIdx + gridPage * itemsPerPage;
+    int pageEndIdx = std::min(startIdx + numItems, pageStartIdx + itemsPerPage);
+    
+    for (int i = pageStartIdx; i < pageEndIdx; ++i) {
+        int relIdx = i - pageStartIdx;
+        int row = relIdx / cols;
+        int col = relIdx % cols;
+        int x = startX + col * (thumbW + spacingX);
+        int y = startY + row * (thumbH + spacingY);
+        
+        int cardId = history[i];
+        FsFile file;
+        if (Storage.openFileForRead("TAROT", assets.getCardImagePath(cardId), file)) {
+            Bitmap bitmap(file, true);
+            if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+                renderer.drawBitmap(bitmap, x, y, thumbW, thumbH, 0, 0);
+            }
+            file.close();
+        }
+        renderer.drawRect(x, y, thumbW, thumbH, true);
+    }
+    
+    char pageBuf[32];
+    snprintf(pageBuf, sizeof(pageBuf), "Page %d/%d", gridPage + 1, std::max(1, totalPages));
+    renderer.drawCenteredText(UI_10_FONT_ID, renderer.getScreenHeight() - 40, pageBuf);
+    
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "Next Page", "Prev Page", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
