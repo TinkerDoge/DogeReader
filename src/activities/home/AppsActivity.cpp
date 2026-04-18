@@ -3,6 +3,8 @@
 #include <I18n.h>
 #include "../ActivityManager.h"
 #include "../tarot/TarotActivity.h"
+#include "../apps/ReadingHeatmapActivity.h"
+#include "../apps/ReadingStatsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -17,7 +19,7 @@ void AppsActivity::onExit() {
 }
 
 void AppsActivity::loop() {
-  const int appCount = 1; // Only Tarot for now
+  const int appCount = 2;
 
   buttonNavigator.onNext([this, appCount] {
     selectorIndex = ButtonNavigator::nextIndex(selectorIndex, appCount);
@@ -32,6 +34,8 @@ void AppsActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (selectorIndex == 0) {
       onTarotOpen();
+    } else if (selectorIndex == 1) {
+      onReadingStatsOpen();
     }
   }
 
@@ -49,9 +53,9 @@ void AppsActivity::render(RenderLock&&) {
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_APPS_TITLE));
 
-  std::vector<const char*> appNames = {tr(STR_TAROT_TITLE)};
-  std::vector<const char*> appDescs = {tr(STR_TAROT_DESC)};
-  std::vector<UIIcon> appIcons = {Tarot};
+  std::vector<const char*> appNames = {tr(STR_TAROT_TITLE), tr(STR_READING_STATS)};
+  std::vector<const char*> appDescs = {tr(STR_TAROT_DESC), tr(STR_READING_STATS_DESC)};
+  std::vector<UIIcon> appIcons = {Tarot, Heatmap};
 
   GUI.drawList(
       renderer,
@@ -71,4 +75,12 @@ void AppsActivity::render(RenderLock&&) {
 
 void AppsActivity::onTarotOpen() {
   activityManager.pushActivity(std::make_unique<TarotActivity>(renderer, mappedInput));
+}
+
+void AppsActivity::onReadingStatsOpen() {
+  activityManager.pushActivity(std::make_unique<ReadingStatsActivity>(renderer, mappedInput));
+}
+
+void AppsActivity::onReadingHeatmapOpen() {
+  activityManager.pushActivity(std::make_unique<ReadingHeatmapActivity>(renderer, mappedInput));
 }

@@ -619,7 +619,8 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon) const {
+                               const std::function<UIIcon(int index)>& rowIcon,
+                               const std::function<std::string(int index)>& buttonSubtitle) const {
   for (int i = 0; i < buttonCount; ++i) {
     const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
                       static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
@@ -636,13 +637,21 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
 
     std::string labelStr = buttonLabel(i);
     const char* label = labelStr.c_str();
-    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
-    const int textX = rect.x + (rect.width - textWidth) / 2;
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-    const int textY =
-        tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
-    // Invert text when the tile is selected, to contrast with the filled background
-    renderer.drawText(UI_10_FONT_ID, textX, textY, label, selectedIndex != i);
+    
+    int textX = rect.x + BaseMetrics::values.contentSidePadding + 10;
+    int textY = tileY + 5;
+
+    if (buttonSubtitle != nullptr) {
+      renderer.drawText(UI_10_FONT_ID, textX, textY, label, !selected, EpdFontFamily::BOLD);
+      std::string subtitle = buttonSubtitle(i);
+      renderer.drawText(SMALL_FONT_ID, textX, textY + lineHeight + 2, subtitle.c_str(), !selected);
+    } else {
+      const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
+      textX = rect.x + (rect.width - textWidth) / 2;
+      textY = tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;
+      renderer.drawText(UI_10_FONT_ID, textX, textY, label, !selected);
+    }
   }
 }
 

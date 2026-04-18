@@ -606,30 +606,43 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 }
 
 void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
-  int rotatedX = 0;
-  int rotatedY = 0;
-  rotateCoordinates(orientation, x, y, &rotatedX, &rotatedY, panelWidth, panelHeight);
-  // Rotate origin corner
-  switch (orientation) {
-    case Portrait:
-      rotatedY = rotatedY - height;
-      break;
-    case PortraitInverted:
-      rotatedX = rotatedX - width;
-      break;
-    case LandscapeClockwise:
-      rotatedY = rotatedY - height;
-      rotatedX = rotatedX - width;
-      break;
-    case LandscapeCounterClockwise:
-      break;
+  if (orientation == LandscapeCounterClockwise) {
+    // Native orientation optimization
+    display.drawImage(bitmap, x, y, width, height, true);
+    return;
   }
-  // TODO: Rotate bits
-  display.drawImage(bitmap, rotatedX, rotatedY, width, height);
+  drawPROGMEMImage(bitmap, x, y, width, height, false);
+}
+
+void GfxRenderer::drawImageTransparent(const uint8_t bitmap[], const int x, const int y, const int width,
+                                         const int height) const {
+  if (orientation == LandscapeCounterClockwise) {
+    // Native orientation optimization
+    display.drawImageTransparent(bitmap, x, y, width, height, true);
+    return;
+  }
+  drawPROGMEMImage(bitmap, x, y, width, height, true);
 }
 
 void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
-  display.drawImageTransparent(bitmap, y, getScreenWidth() - width - x, height, width);
+  drawImageTransparent(bitmap, x, y, width, height);
+}
+
+void GfxRenderer::drawPROGMEMImage(const uint8_t bitmap[], int x, int y, int width, int height,
+                                   bool transparent) const {
+  const int rowBytes = (width + 7) / 8;
+  for (int row = 0; row < height; row++) {
+    for (int col = 0; col < width; col++) {
+      const int byteIdx = row * rowBytes + (col / 8);
+      const int bitIdx = 7 - (col % 8);
+      const bool isBlack = !(bitmap[byteIdx] & (1 << bitIdx));
+      if (isBlack) {
+        drawPixel(x + col, y + row, true);
+      } else if (!transparent) {
+        drawPixel(x + col, y + row, false);
+      }
+    }
+  }
 }
 
 void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, const int maxWidth, const int maxHeight,

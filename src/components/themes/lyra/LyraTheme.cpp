@@ -106,6 +106,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return Apps;
       case UIIcon::Tarot:
         return TarotCard;
+      case UIIcon::Heatmap:
+        return RecentIcon;
       default:
         return nullptr;
     }
@@ -514,7 +516,8 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
 
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon) const {
+                               const std::function<UIIcon(int index)>& rowIcon,
+                               const std::function<std::string(int index)>& buttonSubtitle) const {
   for (int i = 0; i < buttonCount; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
     Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
@@ -531,18 +534,28 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const char* label = labelStr.c_str();
     int textX = tileRect.x + 16;
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
+    int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
+    
+    if (buttonSubtitle != nullptr) {
+      textY = tileRect.y + 10;
+    }
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
       const uint8_t* iconBitmap = iconForName(icon, mainMenuIconSize);
       if (iconBitmap != nullptr) {
-        renderer.drawIcon(iconBitmap, textX, textY + 3, mainMenuIconSize, mainMenuIconSize);
+        renderer.drawIcon(iconBitmap, textX, tileRect.y + (LyraMetrics::values.menuRowHeight - mainMenuIconSize) / 2,
+                          mainMenuIconSize, mainMenuIconSize);
         textX += mainMenuIconSize + hPaddingInSelection + 2;
       }
     }
 
-    renderer.drawText(UI_12_FONT_ID, textX, textY, label, true);
+    renderer.drawText(UI_12_FONT_ID, textX, textY, label, true, EpdFontFamily::BOLD);
+    
+    if (buttonSubtitle != nullptr) {
+      std::string subtitle = buttonSubtitle(i);
+      renderer.drawText(SMALL_FONT_ID, textX, textY + lineHeight + 2, subtitle.c_str(), true);
+    }
   }
 }
 
