@@ -20,6 +20,7 @@
 #include "MappedInputManager.h"
 #include "QrDisplayActivity.h"
 #include "ReaderUtils.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -45,6 +46,7 @@ int clampPercent(int percent) {
 
 void EpubReaderActivity::onEnter() {
   Activity::onEnter();
+  startTime = millis();
 
   if (!epub) {
     return;
@@ -91,6 +93,13 @@ void EpubReaderActivity::onEnter() {
 
 void EpubReaderActivity::onExit() {
   Activity::onExit();
+
+  if (startTime > 0) {
+    uint32_t minutes = (millis() - startTime) / 60000;
+    if (minutes > 0) {
+      READING_STATS.addMinutes(minutes, epub->getPath());
+    }
+  }
 
   // Reset orientation back to portrait for the rest of the UI
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);

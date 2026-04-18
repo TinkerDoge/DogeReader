@@ -11,9 +11,83 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SettingsList.h"
 #include "WifiCredentialStore.h"
+
+// ---- ReadingStatsStore ----
+
+bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore& store, const char* path) {
+  JsonDocument doc;
+  doc["totalMinutes"] = store.getLifetimeMinutes();
+  doc["bestStreak"] = store.getBestStreak();
+  doc["dailyGoal"] = store.getDailyGoalMinutes();
+
+  JsonArray historyArr = doc["history"].to<JsonArray>();
+  for (const auto& day : store.getHistory()) {
+    JsonObject dayObj = historyArr.add<JsonObject>();
+    dayObj["date"] = day.date;
+    dayObj["total"] = day.totalMinutes;
+
+    JsonObject booksObj = dayObj["books"].to<JsonObject>();
+    for (const auto& [path, mins] : day.bookMinutes) {
+      booksObj[path] = mins;
+    }
+
+    JsonArray sessionsArr = dayObj["sessions"].to<JsonArray>();
+    for (const auto& session : day.sessions) {
+      JsonObject sessObj = sessionsArr.add<JsonObject>();
+      sessObj["path"] = session.bookPath;
+      sessObj["start"] = session.startTime;
+      sessObj["mins"] = session.minutes;
+    }
+  }
+
+  String json;
+  serializeJson(doc, json);
+  return Storage.writeFile(path, json);
+}
+
+bool JsonSettingsIO::loadReadingStats(ReadingStatsStore& store, const char* json) {
+  JsonDocument doc;
+  auto error = deserializeJson(doc, json);
+  if (error) {
+    LOG_ERR("RSS", "JSON parse error: %s", error.c_str());
+    return false;
+  }
+
+  store.lifetimeMinutes = doc["totalMinutes"] | 0u;
+  store.bestStreak = doc["bestStreak"] | 0u;
+  store.dailyGoalMinutes = doc["dailyGoal"] | 30u;
+
+  store.history.clear();
+  JsonArray historyArr = doc["history"].as<JsonArray>();
+  for (JsonObject dayObj : historyArr) {
+    ReadingDayStats day;
+    day.date = dayObj["date"] | std::string("");
+    day.totalMinutes = dayObj["total"] | 0u;
+
+    JsonObject booksObj = dayObj["books"].as<JsonObject>();
+    for (JsonPair kv : booksObj) {
+      day.bookMinutes[kv.key().c_str()] = kv.value().as<uint32_t>();
+    }
+
+    JsonArray sessionsArr = dayObj["sessions"].as<JsonArray>();
+    for (JsonObject sessObj : sessionsArr) {
+      ReadingSession session;
+      session.bookPath = sessObj["path"] | std::string("");
+      session.startTime = sessObj["start"] | 0u;
+      session.minutes = sessObj["mins"] | 0u;
+      day.sessions.push_back(session);
+    }
+
+    store.history.push_back(day);
+  }
+
+  LOG_DBG("RSS", "Reading stats loaded from file (%zu entries)", store.history.size());
+  return true;
+}
 
 // Convert legacy settings.
 void applyLegacyStatusBarSettings(CrossPointSettings& settings) {

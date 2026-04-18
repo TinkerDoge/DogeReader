@@ -10,6 +10,8 @@ class AppsActivity final : public Activity {
   bool firstRenderDone = false;
   
   void onTarotOpen();
+  void onReadingStatsOpen();
+  void onReadingHeatmapOpen();
 
  public:
   explicit AppsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

@@ -16,6 +16,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "ReadingStatsStore.h"
 #include "XtcReaderChapterSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -27,6 +28,7 @@ constexpr unsigned long goHomeMs = 1000;
 
 void XtcReaderActivity::onEnter() {
   Activity::onEnter();
+  startTime = millis();
 
   if (!xtc) {
     return;
@@ -48,6 +50,13 @@ void XtcReaderActivity::onEnter() {
 
 void XtcReaderActivity::onExit() {
   Activity::onExit();
+
+  if (startTime > 0) {
+    uint32_t minutes = (millis() - startTime) / 60000;
+    if (minutes > 0) {
+      READING_STATS.addMinutes(minutes, xtc->getPath());
+    }
+  }
 
   APP_STATE.readerActivityLoadCount = 0;
   APP_STATE.saveToFile();

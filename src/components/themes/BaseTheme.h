@@ -64,7 +64,7 @@ struct ThemeMetrics {
   bool keyboardCenteredText;
 };
 
-enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, AppsMenu, Tarot };
+enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, AppsMenu, Tarot, Heatmap };
 
 // Default theme implementation (Classic Theme)
 // Additional themes can inherit from this and override methods as needed
@@ -132,7 +132,8 @@ class BaseTheme {
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon) const;
+                              const std::function<UIIcon(int index)>& rowIcon,
+                              const std::function<std::string(int index)>& buttonSubtitle = nullptr) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   virtual void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,

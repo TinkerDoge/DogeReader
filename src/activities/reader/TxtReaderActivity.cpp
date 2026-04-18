@@ -11,6 +11,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -24,6 +25,7 @@ constexpr uint8_t CACHE_VERSION = 2;          // Increment when cache format cha
 
 void TxtReaderActivity::onEnter() {
   Activity::onEnter();
+  startTime = millis();
 
   if (!txt) {
     return;
@@ -46,6 +48,13 @@ void TxtReaderActivity::onEnter() {
 
 void TxtReaderActivity::onExit() {
   Activity::onExit();
+
+  if (startTime > 0) {
+    uint32_t minutes = (millis() - startTime) / 60000;
+    if (minutes > 0) {
+      READING_STATS.addMinutes(minutes, txt->getPath());
+    }
+  }
 
   // Reset orientation back to portrait for the rest of the UI
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
