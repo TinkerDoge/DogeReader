@@ -1,215 +1,133 @@
-# Tarot Card Extraction Script
+# DogeReader (formerly CrossPoint)
 
-This script extracts each page from a PDF (e.g., Rider-Waite-Tarot-Cards-Printable.pdf), resizes/crops/pads to 800x480, and saves as BMP files for device compatibility.
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-Build-blue.svg)](https://platformio.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Usage
-
-```
-python scripts/extract_tarot_cards.py Rider-Waite-Tarot-Cards-Printable.pdf tarot/cards
-```
-
-- Output files: tarot/cards/0.bmp, 1.bmp, ...
-- Requires: Python 3, PyMuPDF, Pillow
-
-## Install dependencies
-
-```
-pip install pymupdf pillow
-```
-# CrossPoint Reader
-
-Firmware for the **Xteink X4** e-paper display reader (unaffiliated with Xteink).
-Built using **PlatformIO** and targeting the **ESP32-C3** microcontroller.
-
-CrossPoint Reader is a purpose-built firmware designed to be a drop-in, fully open-source replacement for the official 
-Xteink firmware. It aims to match or improve upon the standard EPUB reading experience.
+**DogeReader** is a premium, fully open-source firmware replacement for the **Xteink X4** e-paper reader. Designed to unlock the true potential of your hardware, it offers a refined reading experience and unique features not found in the original manufacturer firmware.
 
 ![](./docs/images/cover.jpg)
 
-## Motivation
+## 🌟 What's Different? (New Features)
 
-E-paper devices are fantastic for reading, but most commercially available readers are closed systems with limited 
-customisation. The **Xteink X4** is an affordable, e-paper device, however the official firmware remains closed.
-CrossPoint exists partly as a fun side-project and partly to open up the ecosystem and truely unlock the device's
-potential.
+Unlike the stock firmware, DogeReader is built for customization and advanced functionality:
 
-CrossPoint Reader aims to:
-* Provide a **fully open-source alternative** to the official firmware.
-* Offer a **document reader** capable of handling EPUB content on constrained hardware.
-* Support **customisable font, layout, and display** options.
-* Run purely on the **Xteink X4 hardware**.
+### 🃏 Tarot Card App
+A fully integrated Tarot application that turns your X4 into a digital deck.
+- **Draw & Shuffle**: Realistic card drawing logic.
+- **Meanings & Interpretations**: View detailed meanings for all 78 cards.
+- **History Grid**: Browse your previous draws in a dense thumbnail grid.
+- **Custom Assets**: Easily swap the deck artwork and meanings (see [Tarot Guide](#-tarot-image-guide)).
 
-This project is **not affiliated with Xteink**; it's built as a community project.
+### 🎨 Lyra UI Theme
+A modern, rounded interface designed for clarity and aesthetics.
+- **Iconic Menus**: Navigating settings and files with intuitive icons.
+- **Extended Home Screen**: View more books and info at a glance.
+- **High-Contrast Design**: Optimized for the X4's e-paper display.
 
-## Features & Usage
+### 📊 Reading Activity Heatmap
+Track your reading habits with a visual activity heatmap, similar to GitHub's contribution graph. (Currently in preview).
 
-- [x] EPUB parsing and rendering (EPUB 2 and EPUB 3)
-- [x] Image support within EPUB
-- [x] Saved reading position
-- [x] File explorer with file picker
-  - [x] Basic EPUB picker from root directory
-  - [x] Support nested folders
-  - [ ] EPUB picker with cover art
-- [x] Custom sleep screen
-  - [x] Cover sleep screen
-- [x] Wifi book upload
-- [x] Wifi OTA updates
-- [x] KOReader Sync integration for cross-device reading progress
-- [x] Configurable font, layout, and display options
-  - [ ] User provided fonts
-  - [ ] Full UTF support
-- [x] Screen rotation
+### 🔄 Wireless Sync & Transfers
+- **KOReader Sync**: Seamlessly sync reading progress across devices (Phone, Tablet, Other Readers).
+- **Calibre Integration**: Wireless book transfers via a dedicated Calibre plugin.
+- **OTA Updates**: Update your firmware over-the-air with a single click.
 
-Multi-language support: Read EPUBs in various languages, including English, Spanish, French, German, Italian, Portuguese, Russian, Ukrainian, Polish, Swedish, Norwegian, [and more](./USER_GUIDE.md#supported-languages).
-
-See [the user guide](./USER_GUIDE.md) for instructions on operating CrossPoint, including the
-[KOReader Sync quick setup](./USER_GUIDE.md#365-koreader-sync-quick-setup).
-
-For more details about the scope of the project, see the [SCOPE.md](SCOPE.md) document.
-
-## Installing
-
-### Web (latest firmware)
-
-1. Connect your Xteink X4 to your computer via USB-C and wake/unlock the device
-2. Go to https://xteink.dve.al/ and click "Flash CrossPoint firmware"
-
-To revert back to the official firmware, you can flash the latest official firmware from https://xteink.dve.al/, or swap
-back to the other partition using the "Swap boot partition" button here https://xteink.dve.al/debug.
-
-### Web (specific firmware version)
-
-1. Connect your Xteink X4 to your computer via USB-C
-2. Download the `firmware.bin` file from the release of your choice via the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases)
-3. Go to https://xteink.dve.al/ and flash the firmware file using the "OTA fast flash controls" section
-
-To revert back to the official firmware, you can flash the latest official firmware from https://xteink.dve.al/, or swap
-back to the other partition using the "Swap boot partition" button here https://xteink.dve.al/debug.
-
-### Command line (specific firmware version)
-
-1. Install [`esptool`](https://github.com/espressif/esptool) :
-```bash
-pip install esptool
-```
-2. Download the `firmware.bin` file from the release of your choice via the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases)
-3. Connect your Xteink X4 to your computer via USB-C.
-4. Note the device location. On Linux, run `dmesg` after connecting. On MacOS, run :
-```bash
-log stream --predicate 'subsystem == "com.apple.iokit"' --info
-```
-5. Flash the firmware :
-```bash
-esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-Change `/dev/ttyACM0` to the device for your system.
-
-### Manual
-
-See [Development](#development) below.
-
-## Development
-
-### Prerequisites
-
-* **PlatformIO Core** (`pio`) or **VS Code + PlatformIO IDE**
-* Python 3.8+
-* USB-C cable for flashing the ESP32-C3
-* Xteink X4
-
-### Checking out the code
-
-CrossPoint uses PlatformIO for building and flashing the firmware. To get started, clone the repository:
-
-```
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
-
-# Or, if you've already cloned without --recursive:
-git submodule update --init --recursive
-```
-
-### Flashing your device
-
-Connect your Xteink X4 to your computer via USB-C and run the following command.
-
-```sh
-pio run --target upload
-```
-### Debugging
-
-After flashing the new features, it’s recommended to capture detailed logs from the serial port.
-
-First, make sure all required Python packages are installed:
-
-```python
-python3 -m pip install pyserial colorama matplotlib
-```
-after that run the script:
-```sh
-# For Linux
-# This was tested on Debian and should work on most Linux systems.
-python3 scripts/debugging_monitor.py
-
-# For macOS
-python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
-```
-Minor adjustments may be required for Windows.
-
-## Internals
-
-CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only
-has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based
-on this constraint.
-
-### Data caching
-
-The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the 
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
-
-
-```
-.crosspoint/
-├── epub_12471232/       # Each EPUB is cached to a subdirectory named `epub_<hash>`
-│   ├── progress.bin     # Stores reading progress (chapter, page, etc.)
-│   ├── cover.bmp        # Book cover image (once generated)
-│   ├── book.bin         # Book metadata (title, author, spine, table of contents, etc.)
-│   └── sections/        # All chapter data is stored in the sections subdirectory
-│       ├── 0.bin        # Chapter data (screen count, all text layout info, etc.)
-│       ├── 1.bin        #     files are named by their index in the spine
-│       └── ...
-│
-└── epub_189013891/
-```
-
-Deleting the `.crosspoint` directory will clear the entire cache. 
-
-Due the way it's currently implemented, the cache is not automatically cleared when a book is deleted and moving a book
-file will use a new cache directory, resetting the reading progress.
-
-For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
-
-## Contributing
-
-Contributions are very welcome!
-
-If you are new to the codebase, start with the [contributing docs](./docs/contributing/README.md).
-
-If you're looking for a way to help out, take a look at the [ideas discussion board](https://github.com/crosspoint-reader/crosspoint-reader/discussions/categories/ideas).
-If there's something there you'd like to work on, leave a comment so that we can avoid duplicated effort.
-
-Everyone here is a volunteer, so please be respectful and patient. For more details on our goverance and community 
-principles, please see [GOVERNANCE.md](GOVERNANCE.md).
-
-### To submit a contribution:
-
-1. Fork the repo
-2. Create a branch (`feature/dithering-improvement`)
-3. Make changes
-4. Submit a PR
+### 📖 Enhanced Reader Engine
+- **Custom Typography**: Includes premium fonts like **Bookerly** and **OpenDyslexic**.
+- **Customizable Shortcuts**: Define your own button actions for quick navigation and tools.
+- **Dense Layout Options**: Fine-grained control over margins, line spacing, and alignment.
+- **Aggressive Caching**: Fast page turns and book loading despite the 380KB RAM constraint.
+- **Sunlight Fading Fix**: Software-level compensation for white X4 models in direct sunlight.
 
 ---
 
-CrossPoint Reader is **not affiliated with Xteink or any manufacturer of the X4 hardware**.
+## 🎴 Tarot Image Guide
 
-Huge shoutout to [**diy-esp32-epub-reader** by atomic14](https://github.com/atomic14/diy-esp32-epub-reader), which was a project I took a lot of inspiration from as I
-was making CrossPoint.
+DogeReader allows you to use your own Tarot decks. To set up a custom deck, prepare your files on the SD card as follows:
+
+### Folder Structure
+```
+SD Card Root/
+└── tarot/
+    ├── back.bmp          # Image shown for the back of the deck
+    ├── meanings.json     # Card titles and interpretations
+    ├── cards/            # High-resolution card images
+    │   ├── 0.bmp         # 0. The Fool
+    │   ├── 1.bmp         # 1. The Magician
+    │   └── ...           # up to 77.bmp
+    └── thumbs/           # Small thumbnails for the history grid
+        ├── 0.bmp
+        ├── 1.bmp
+        └── ...
+```
+
+### File Specifications
+For optimal performance and display quality:
+- **Format**: Uncompressed BMP (24-bit color depth).
+- **Main Cards (`/tarot/cards/`)**: Recommended **320x533** pixels.
+- **Thumbnails (`/tarot/thumbs/`)**: Recommended **80x133** pixels.
+- **Back Image (`back.bmp`)**: Recommended **320x533** pixels.
+
+### Meanings JSON Format
+The `meanings.json` file should follow this structure:
+```json
+[
+  {
+    "id": 0,
+    "name": "The Fool",
+    "meaning": "Beginnings, innocence, spontaneity, a free spirit."
+  },
+  ...
+]
+```
+
+> [!TIP]
+> Use the provided Python scripts in the `scripts/` folder to automatically resize and generate thumbnails for your PDF or image-based decks.
+
+---
+
+## 🚀 Getting Started
+
+### Quick Flash (Web)
+1. Connect your Xteink X4 via USB-C.
+2. Visit [xteink.dve.al](https://xteink.dve.al/) and click **Flash DogeReader**.
+
+### Manual Installation
+If you prefer building from source:
+```sh
+git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
+pio run --target upload
+```
+
+---
+
+## 🛠 Development
+
+DogeReader is built using **PlatformIO** and targets the **ESP32-C3**.
+
+### Prerequisites
+- **VS Code** + **PlatformIO IDE**
+- **Python 3.8+**
+
+### Debugging
+Capture detailed logs using our monitoring script:
+```sh
+python scripts/debugging_monitor.py
+```
+
+---
+
+## 🤝 Contributing
+
+We love contributions! Whether it's a bug fix, a new feature, or a translation, check out our [Contributing Guidelines](./docs/contributing/README.md) to get started.
+
+---
+
+## 📜 License & Credits
+
+- **License**: MIT
+- **Inspiration**: [diy-esp32-epub-reader](https://github.com/atomic14/diy-esp32-epub-reader) by atomic14.
+- **Disclaimer**: This project is independent and NOT affiliated with Xteink or any hardware manufacturer.
+
+---
+*Built with ❤️ for the e-paper community.*
