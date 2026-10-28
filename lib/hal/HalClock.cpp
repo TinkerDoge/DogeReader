@@ -100,8 +100,7 @@ bool HalClock::syncSystemTimeFromNTP() {
   for (int i = 0; i < maxAttempts; i++) {
     sntp_sync_status_t status = sntp_get_sync_status();
     if (status != lastStatus) {
-      LOG_DBG("CLK", "SNTP status changed: %d -> %d (attempt %d/%d)", (int)lastStatus, (int)status, i + 1,
-              maxAttempts);
+      LOG_DBG("CLK", "SNTP status changed: %d -> %d (attempt %d/%d)", (int)lastStatus, (int)status, i + 1, maxAttempts);
       lastStatus = status;
       statusChanges++;
     }
