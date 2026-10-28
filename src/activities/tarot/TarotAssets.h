@@ -1,31 +1,30 @@
 #pragma once
 
-#include <string>
 #include <ArduinoJson.h>
 
+#include <cstdint>
+#include <string>
+
+// Points into TarotAssets' JSON document; valid while the TarotAssets lives.
 struct CardMeaning {
-    std::string name;
-    std::string meaning;
+  const char* name;
+  const char* meaning;
 };
 
+// Card meanings and image paths from /tarot on the SD card.
 class TarotAssets {
-public:
-    TarotAssets();
+ public:
+  // Loads /tarot/meanings.json. Returns false if the deck is not installed.
+  bool loadMeanings();
+  bool isLoaded() const { return loaded; }
 
-    // Loads the meanings.json file from the SD card
-    bool loadMeanings();
+  CardMeaning getMeaning(int8_t id) const;
 
-    // Returns the meaning for a specific card ID
-    CardMeaning getMeaning(int8_t id) const;
+  static std::string getCardImagePath(int8_t id);
+  static std::string getCardThumbPath(int8_t id);
+  static const char* getBackImagePath() { return "/tarot/back.bmp"; }
 
-    // Returns the path to the BMP image for a specific card ID
-    std::string getCardImagePath(int8_t id) const;
-    std::string getCardThumbPath(int8_t id) const;
-
-    // Returns the path to the back of the card image
-    std::string getBackImagePath() const;
-
-private:
-    JsonDocument meaningsDoc;
-    bool loaded;
+ private:
+  JsonDocument meaningsDoc;
+  bool loaded = false;
 };

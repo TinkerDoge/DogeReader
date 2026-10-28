@@ -1,62 +1,59 @@
 #include "TarotAssets.h"
+
 #include <HalStorage.h>
 #include <Logging.h>
 
-TarotAssets::TarotAssets() : loaded(false) {}
+#include <cstdio>
+
+#include "util/HalFileJsonReader.h"
+
+namespace {
+constexpr char MEANINGS_PATH[] = "/tarot/meanings.json";
+}
 
 bool TarotAssets::loadMeanings() {
-    if (loaded) return true;
+  if (loaded) return true;
 
-    if (!Storage.exists("/tarot/meanings.json")) {
-        LOG_ERR("TAROT", "meanings.json not found in /tarot/");
-        return false;
-    }
+  HalFile file;
+  if (!Storage.exists(MEANINGS_PATH) || !Storage.openFileForRead("TAROT", MEANINGS_PATH, file)) {
+    LOG_ERR("TAROT", "%s not found", MEANINGS_PATH);
+    return false;
+  }
 
-    String json = Storage.readFile("/tarot/meanings.json");
-    if (json.length() == 0) {
-        LOG_ERR("TAROT", "Failed to read meanings.json");
-        return false;
-    }
+  HalFileJsonReader reader{file};
+  const auto error = deserializeJson(meaningsDoc, reader);
+  if (error) {
+    LOG_ERR("TAROT", "JSON parse error: %s", error.c_str());
+    meaningsDoc.clear();
+    return false;
+  }
 
-    auto error = deserializeJson(meaningsDoc, json);
-    if (error) {
-        LOG_ERR("TAROT", "JSON parse error: %s", error.c_str());
-        return false;
-    }
-
-    loaded = true;
-    return true;
+  loaded = true;
+  return true;
 }
 
-CardMeaning TarotAssets::getMeaning(int8_t id) const {
-    CardMeaning result = {"Unknown", "No meaning found."};
-    
-    if (!loaded) return result;
+CardMeaning TarotAssets::getMeaning(const int8_t id) const {
+  CardMeaning result = {"", ""};
+  if (!loaded) return result;
 
-    JsonArrayConst cards = meaningsDoc.as<JsonArrayConst>();
-    for (JsonObjectConst card : cards) {
-        if (card["id"] == id) {
-            result.name = card["name"] | "Unknown";
-            result.meaning = card["meaning"] | "No meaning found.";
-            break;
-        }
+  for (JsonObjectConst card : meaningsDoc.as<JsonArrayConst>()) {
+    if (card["id"] == id) {
+      result.name = card["name"] | "";
+      result.meaning = card["meaning"] | "";
+      break;
     }
-    
-    return result;
+  }
+  return result;
 }
 
-std::string TarotAssets::getCardImagePath(int8_t id) const {
-    char path[32];
-    snprintf(path, sizeof(path), "/tarot/cards/%d.bmp", id);
-    return std::string(path);
+std::string TarotAssets::getCardImagePath(const int8_t id) {
+  char path[32];
+  snprintf(path, sizeof(path), "/tarot/cards/%d.bmp", id);
+  return std::string(path);
 }
 
-std::string TarotAssets::getCardThumbPath(int8_t id) const {
-    char path[32];
-    snprintf(path, sizeof(path), "/tarot/thumbs/%d.bmp", id);
-    return std::string(path);
-}
-
-std::string TarotAssets::getBackImagePath() const {
-    return "/tarot/back.bmp";
+std::string TarotAssets::getCardThumbPath(const int8_t id) {
+  char path[32];
+  snprintf(path, sizeof(path), "/tarot/thumbs/%d.bmp", id);
+  return std::string(path);
 }

@@ -1,174 +1,90 @@
 #include "ReadingStatsAnalytics.h"
-#include <ctime>
-#include <map>
+
 #include <algorithm>
-#include <set>
 
-uint8_t ReadingStatsAnalytics::getHeatLevel(uint32_t minutes) {
+namespace ReadingStatsAnalytics {
+
+uint8_t getHeatLevel(const uint32_t minutes, uint32_t goalMinutes) {
   if (minutes == 0) return 0;
-  if (minutes <= 10) return 1;
-  if (minutes <= 30) return 2;
-  if (minutes <= 60) return 3;
-  return 4;
+  if (goalMinutes == 0) goalMinutes = 1;
+  if (minutes >= goalMinutes) return 3;
+  if (minutes * 2 >= goalMinutes) return 2;
+  return 1;
 }
 
-// Convert "YYYY-MM-DD" to a day number (days since epoch, using noon to avoid DST edges).
-int64_t ReadingStatsAnalytics::dateToDayNumber(const std::string& yyyy_mm_dd) {
-  if (yyyy_mm_dd.size() < 10) return -1;
+uint32_t getCurrentStreak(const std::vector<ReadingDay>& days, const int32_t today) {
+  int newestIndex = static_cast<int>(days.size()) - 1;
+  while (newestIndex >= 0 && days[newestIndex].minutes == 0) newestIndex--;
+  if (newestIndex < 0) return 0;
 
-  struct tm t{};
-  t.tm_year = std::stoi(yyyy_mm_dd.substr(0, 4)) - 1900;
-  t.tm_mon = std::stoi(yyyy_mm_dd.substr(5, 2)) - 1;
-  t.tm_mday = std::stoi(yyyy_mm_dd.substr(8, 2));
-  t.tm_hour = 12;  // Noon — avoids DST edge cases
-  t.tm_min = 0;
-  t.tm_sec = 0;
-  t.tm_isdst = -1;
-
-  time_t epoch = mktime(&t);
-  if (epoch == -1) return -1;
-  return static_cast<int64_t>(epoch) / 86400;
-}
-
-uint32_t ReadingStatsAnalytics::getCurrentStreak(const std::vector<ReadingDayStats>& history,
-                                                  const std::string& today) {
-  if (history.empty()) return 0;
-
-  // 1. Collect distinct dates with totalMinutes > 0 into a set.
-  std::set<std::string> readingDates;
-  for (const auto& day : history) {
-    if (day.totalMinutes > 0) {
-      readingDates.insert(day.date);
-    }
-  }
-  if (readingDates.empty()) return 0;
-
-  // 2. Determine the anchor date.
-  int64_t todayNum = dateToDayNumber(today);
-  if (todayNum < 0) return 0;
-
-  // Find the latest date in the set for the clock-backwards defensive check.
-  const std::string& latestDate = *readingDates.rbegin();
-  int64_t latestNum = dateToDayNumber(latestDate);
-
-  std::string anchor;
-  if (latestNum > todayNum) {
-    // Clock went backwards: latest recorded date is after today.
-    // Anchor on the latest date rather than returning 0.
-    anchor = latestDate;
-  } else if (readingDates.count(today)) {
-    // Today is in the set → anchor on today.
-    anchor = today;
-  } else {
-    // Compute yesterday.
-    time_t todayEpoch = todayNum * 86400 + 43200;  // noon
-    time_t yesterdayEpoch = todayEpoch - 86400;
-    struct tm* yt = localtime(&yesterdayEpoch);
-    char buf[11];
-    strftime(buf, sizeof(buf), "%Y-%m-%d", yt);
-    std::string yesterday(buf);
-
-    if (readingDates.count(yesterday)) {
-      // Yesterday is in the set → streak still alive.
-      anchor = yesterday;
-    } else {
-      // Missed a full day → streak broken.
-      return 0;
-    }
-  }
-
-  // 3. Walk backwards one calendar day at a time while each date is present.
-  int64_t anchorNum = dateToDayNumber(anchor);
-  if (anchorNum < 0) return 0;
+  const int32_t newest = days[newestIndex].day;
+  // A streak is still alive if the newest reading day is today or yesterday.
+  // With an unknown clock (today < 0) or a clock that went backwards, trust the
+  // newest entry rather than reporting a broken streak.
+  if (today >= 0 && newest <= today && newest < today - 1) return 0;
 
   uint32_t streak = 0;
-  for (int64_t dayNum = anchorNum;; dayNum--) {
-    // Convert day number back to a YYYY-MM-DD string.
-    time_t dayEpoch = dayNum * 86400 + 43200;  // noon
-    struct tm* dt = localtime(&dayEpoch);
-    char buf[11];
-    strftime(buf, sizeof(buf), "%Y-%m-%d", dt);
-    std::string dateStr(buf);
-
-    if (readingDates.count(dateStr)) {
-      streak++;
-    } else {
-      break;
-    }
+  int32_t expected = newest;
+  for (int i = newestIndex; i >= 0; i--) {
+    if (days[i].minutes == 0 || days[i].day > expected) continue;
+    if (days[i].day != expected) break;
+    streak++;
+    expected--;
   }
-
   return streak;
 }
 
-uint32_t ReadingStatsAnalytics::getBestStreak(const std::vector<ReadingDayStats>& history) {
-  if (history.empty()) return 0;
-
-  // 1. Collect distinct reading dates (totalMinutes > 0), sort ascending.
-  std::set<std::string> dateSet;
-  for (const auto& day : history) {
-    if (day.totalMinutes > 0) {
-      dateSet.insert(day.date);
-    }
+uint32_t getBestStreak(const std::vector<ReadingDay>& days) {
+  uint32_t best = 0;
+  uint32_t run = 0;
+  int32_t previous = -2;
+  for (const auto& entry : days) {
+    if (entry.minutes == 0 || entry.day == previous) continue;
+    run = (entry.day == previous + 1) ? run + 1 : 1;
+    best = std::max(best, run);
+    previous = entry.day;
   }
-  if (dateSet.empty()) return 0;
-
-  std::vector<std::string> dates(dateSet.begin(), dateSet.end());
-  // Already sorted by set ordering (lexicographic = chronological for YYYY-MM-DD).
-
-  // 2. Single pass: extend current run when next date is exactly +1 day, else reset.
-  uint32_t bestStreak = 1;
-  uint32_t currentRun = 1;
-  int64_t prevDayNum = dateToDayNumber(dates[0]);
-
-  for (size_t i = 1; i < dates.size(); i++) {
-    int64_t dayNum = dateToDayNumber(dates[i]);
-    if (dayNum < 0) continue;
-
-    if (dayNum == prevDayNum + 1) {
-      currentRun++;
-    } else {
-      currentRun = 1;
-    }
-
-    if (currentRun > bestStreak) {
-      bestStreak = currentRun;
-    }
-    prevDayNum = dayNum;
-  }
-
-  return bestStreak;
+  return best;
 }
 
-std::vector<uint32_t> ReadingStatsAnalytics::getLast42DaysMinutes(const std::vector<ReadingDayStats>& history) {
-  std::map<std::string, uint32_t> historyMap;
-  for (const auto& day : history) {
-    historyMap[day.date] = day.totalMinutes;
-  }
-
-  std::vector<uint32_t> result;
-  result.reserve(42);
-
-  time_t now = time(nullptr);
-  // Round to start of day
-  struct tm* t = localtime(&now);
-  t->tm_hour = 12; // Use noon to avoid DST issues
-  t->tm_min = 0;
-  t->tm_sec = 0;
-  time_t current = mktime(t);
-
-  for (int i = 41; i >= 0; i--) {
-    time_t dayTime = current - (i * 24 * 3600);
-    struct tm* dt = localtime(&dayTime);
-    char buf[11];
-    strftime(buf, sizeof(buf), "%Y-%m-%d", dt);
-    
-    std::string dateStr(buf);
-    if (historyMap.count(dateStr)) {
-      result.push_back(historyMap[dateStr]);
-    } else {
-      result.push_back(0);
-    }
-  }
-
-  return result;
+uint16_t getMinutesOnDay(const std::vector<ReadingDay>& days, const int32_t day) {
+  if (day < 0) return 0;
+  const auto it = std::lower_bound(days.begin(), days.end(), day,
+                                   [](const ReadingDay& entry, int32_t value) { return entry.day < value; });
+  return (it != days.end() && it->day == day) ? it->minutes : 0;
 }
+
+int32_t daysFromCivil(int32_t year, const uint32_t month, const uint32_t dayOfMonth) {
+  year -= month <= 2 ? 1 : 0;
+  const int32_t era = (year >= 0 ? year : year - 399) / 400;
+  const uint32_t yearOfEra = static_cast<uint32_t>(year - era * 400);
+  const uint32_t dayOfYear = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + dayOfMonth - 1;
+  const uint32_t dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+  return era * 146097 + static_cast<int32_t>(dayOfEra) - 719468;
+}
+
+void civilFromDays(int32_t days, int32_t& year, uint32_t& month, uint32_t& dayOfMonth) {
+  days += 719468;
+  const int32_t era = (days >= 0 ? days : days - 146096) / 146097;
+  const uint32_t dayOfEra = static_cast<uint32_t>(days - era * 146097);
+  const uint32_t yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
+  const uint32_t dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
+  const uint32_t monthIndex = (5 * dayOfYear + 2) / 153;
+  dayOfMonth = dayOfYear - (153 * monthIndex + 2) / 5 + 1;
+  month = monthIndex < 10 ? monthIndex + 3 : monthIndex - 9;
+  year = static_cast<int32_t>(yearOfEra) + era * 400 + (month <= 2 ? 1 : 0);
+}
+
+uint32_t weekdayMondayFirst(const int32_t days) {
+  // 1970-01-01 was a Thursday (index 3 when Monday is 0).
+  return static_cast<uint32_t>(((days % 7) + 7 + 3) % 7);
+}
+
+uint32_t daysInMonth(const int32_t year, const uint32_t month) {
+  static constexpr uint8_t DAYS[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month < 1 || month > 12) return 0;
+  const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+  return DAYS[month - 1] + ((month == 2 && leap) ? 1 : 0);
+}
+
+}  // namespace ReadingStatsAnalytics

@@ -35,9 +35,10 @@ transfer PIN, cert pinning for OTA).*
 |-----|------|----------|
 | ~~P1~~ | ~~**Reading streaks are fake.**~~ Fixed — `getCurrentStreak()` and `getBestStreak()` now use real date-aware consecutive-day math in `ReadingStatsAnalytics` (single source of truth), with host unit tests. `ReadingStatsStore` delegates; old inflated `bestStreak` self-heals on load. | [util/ReadingStatsAnalytics.cpp](../src/util/ReadingStatsAnalytics.cpp), [test/reading_stats/](../test/reading_stats/) |
 | ~~P2~~ | ~~**Reading Stats book progress bars are always empty.**~~ Fixed — each reader's `onExit` now calls `recordProgress()` with the current book percent; the Stats screen reads it via `getBookPercent()`. Progress is persisted in the stats JSON as `bookProgress`. | [ReadingStatsStore.cpp](../src/ReadingStatsStore.cpp), [apps/ReadingStatsActivity.cpp:44](../src/activities/apps/ReadingStatsActivity.cpp#L44) |
-| P2 | **Reading Profile radar is placeholder math** (`// Simplified metric calculation`) with a hardcoded summary string | [apps/ReadingProfileActivity.cpp:27](../src/activities/apps/ReadingProfileActivity.cpp#L27), [:70](../src/activities/apps/ReadingProfileActivity.cpp#L70) |
-| P2 | **Home "Sync" shortcut is a no-op** (`// Mock sync`) and its subtitle "Last sync: Just now" is faked | [home/HomeActivity.cpp:213](../src/activities/home/HomeActivity.cpp#L213), [util/ShortcutRegistry.cpp:28](../src/util/ShortcutRegistry.cpp#L28) |
-| P2 | **Reading Heatmap is unreachable** — `onReadingHeatmapOpen()` exists but `AppsActivity` lists only 2 apps (Heatmap is reachable only via ReadingStats→Confirm) | [home/AppsActivity.cpp:84](../src/activities/home/AppsActivity.cpp#L84) |
+| ~~P1~~ | ~~**Reading stats were wiped on every boot** (store never loaded before the first save), the JSON file grew without bound past `readFile`'s 50 KB cap, and X4 sessions were dated 1970-01-01.~~ Fixed — compact binary store in `/.crosspoint/reading_stats.bin`, loaded at boot, days recorded only with a valid clock and in the configured UTC offset; legacy JSON is migrated once. | [ReadingStatsStore.cpp](../src/ReadingStatsStore.cpp) |
+| ~~P2~~ | ~~**Reading Profile radar is placeholder math**~~ Removed; the Stats screen now shows a real 7-day chart. | [apps/ReadingStatsActivity.cpp](../src/activities/apps/ReadingStatsActivity.cpp) |
+| ~~P2~~ | ~~**Home "Sync" shortcut is a no-op**~~ Removed with the unused `ShortcutRegistry`. | — |
+| ~~P2~~ | ~~**Reading Heatmap is unreachable / Stats⇄Heatmap push loop**~~ Fixed — Stats → Confirm opens the calendar, Back returns. | [apps/ReadingHeatmapActivity.cpp](../src/activities/apps/ReadingHeatmapActivity.cpp) |
 | P2 | Possible **infinite reload loop** if a page keeps failing to load (clears cache + `requestUpdate()` on every failure) | [reader/EpubReaderActivity.cpp:643](../src/activities/reader/EpubReaderActivity.cpp#L643) |
 | P3 | Grayscale anti-aliasing pass runs unconditionally (`// TODO: Only do this if font supports it`) — wasted work on fonts without AA data | [reader/EpubReaderActivity.cpp:768](../src/activities/reader/EpubReaderActivity.cpp#L768) |
 | P3 | OTA install uses a `delay(100)` polling loop; activity flagged for refactor (`// TODO @ngxson`) | [OtaUpdater.cpp:246](../src/network/OtaUpdater.cpp#L246), [settings/OtaUpdateActivity.cpp:142](../src/activities/settings/OtaUpdateActivity.cpp#L142) |
@@ -48,10 +49,8 @@ transfer PIN, cert pinning for OTA).*
 
 Several strings bypass the `tr()` / i18n system that the rest of the app uses — they will not translate:
 
-- `ShortcutRegistry` subtitles are hardcoded English ("WiFi File Sharing", "Jump back in", …) —
-  [util/ShortcutRegistry.cpp:29-34](../src/util/ShortcutRegistry.cpp#L29-L34).
-- Apps screens (ReadingStats / Heatmap / Profile) use hardcoded English labels ("Heatmap", "Profile",
-  "Started Books", box labels) instead of `tr()`.
+- ~~`ShortcutRegistry` subtitles are hardcoded English~~ — removed.
+- ~~Apps screens (ReadingStats / Heatmap / Profile) and Tarot use hardcoded English labels~~ — now `tr()`.
 
 ---
 
@@ -122,7 +121,6 @@ Low-risk, high-clarity places to begin (each is self-contained and testable):
 1. ~~**Fix reading streaks** — implement date-aware streak counting in `ReadingStatsStore` /
    `ReadingStatsAnalytics`.~~ ✅ Done.
 2. ~~**Wire book progress into Reading Stats** — read `progress.bin` per book instead of hardcoding 0.~~ ✅ Done (via per-book `recordProgress()` in each reader's `onExit`).
-3. **i18n the hardcoded strings** in `ShortcutRegistry` and the apps screens.
+3. ~~**i18n the hardcoded strings** in `ShortcutRegistry` and the apps screens.~~ ✅ Done.
 4. **Reconcile the three stale docs** above against the code (small, mechanical, improves everyone's map).
-5. **Decide the fate of the Sync shortcut and the unwired Heatmap entry** — either wire them up or remove the
-   dead UI.
+5. ~~**Decide the fate of the Sync shortcut and the unwired Heatmap entry**~~ ✅ Sync removed, calendar wired up.

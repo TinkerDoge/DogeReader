@@ -27,7 +27,7 @@ constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format cha
 
 void TxtReaderActivity::onEnter() {
   Activity::onEnter();
-  startTime = millis();
+  readingTimer.start(millis());
 
   if (!txt) {
     return;
@@ -51,18 +51,9 @@ void TxtReaderActivity::onEnter() {
 void TxtReaderActivity::onExit() {
   Activity::onExit();
 
-  if (startTime > 0) {
-    uint32_t minutes = (millis() - startTime) / 60000;
-    if (minutes > 0) {
-      READING_STATS.addMinutes(minutes, txt->getPath());
-    }
-  }
-
-  // Record the last-known book progress for the Stats screen.
-  if (txt && totalPages > 0) {
-    uint8_t pct = static_cast<uint8_t>((currentPage + 1) * 100 / totalPages);
-    if (pct > 100) pct = 100;
-    READING_STATS.recordProgress(txt->getPath(), pct);
+  if (txt) {
+    const int percent = totalPages > 0 ? (currentPage + 1) * 100 / totalPages : -1;
+    READING_STATS.recordSession(txt->getPath().c_str(), readingTimer.finishMinutes(millis()), percent);
   }
 
   // Reset orientation back to portrait for the rest of the UI
@@ -331,6 +322,7 @@ void TxtReaderActivity::render(RenderLock&&) {
   if (!txt) {
     return;
   }
+  readingTimer.tick(millis());
 
   // Initialize reader if not done
   if (!initialized) {

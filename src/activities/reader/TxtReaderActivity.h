@@ -6,6 +6,7 @@
 
 #include "CrossPointSettings.h"
 #include "activities/Activity.h"
+#include "util/ReadingSessionTimer.h"
 
 class TxtReaderActivity final : public Activity {
   std::unique_ptr<Txt> txt;
@@ -20,7 +21,7 @@ class TxtReaderActivity final : public Activity {
   int linesPerPage = 0;
   int viewportWidth = 0;
   bool initialized = false;
-  unsigned long startTime = 0;
+  ReadingSessionTimer readingTimer;  // active reading time, recorded into READING_STATS on exit
 
   // Cached settings for cache validation (different fonts/margins require re-indexing)
   int cachedFontId = 0;

@@ -154,7 +154,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
 
 void EpubReaderActivity::onEnter() {
   Activity::onEnter();
-  startTime = millis();
+  readingTimer.start(millis());
 
   if (!epub) {
     return;
@@ -223,18 +223,13 @@ void EpubReaderActivity::onEnter() {
 void EpubReaderActivity::onExit() {
   Activity::onExit();
 
-  if (startTime > 0 && epub) {
-    uint32_t minutes = (millis() - startTime) / 60000;
-    if (minutes > 0) {
-      READING_STATS.addMinutes(minutes, epub->getPath());
+  if (epub) {
+    int percent = -1;
+    if (epub->getBookSize() > 0 && section && section->pageCount > 0) {
+      const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+      percent = static_cast<int>(epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f + 0.5f);
     }
-  }
-
-  // Record the last-known book progress for the Stats screen.
-  if (epub && epub->getBookSize() > 0 && section && section->pageCount > 0) {
-    const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
-    const float bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f;
-    READING_STATS.recordProgress(epub->getPath(), static_cast<uint8_t>(bookProgress + 0.5f));
+    READING_STATS.recordSession(epub->getPath().c_str(), readingTimer.finishMinutes(millis()), percent);
   }
 
   // The extractor holds a raw pointer to this activity's epub; drop it before
@@ -1094,6 +1089,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   if (!epub) {
     return;
   }
+  readingTimer.tick(millis());
 
   const auto showPendingSyncSaveError = [this]() {
     if (!pendingSyncSaveError) return;

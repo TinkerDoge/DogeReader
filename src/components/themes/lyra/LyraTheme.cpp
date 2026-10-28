@@ -13,6 +13,7 @@
 
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
+#include "components/icons/apps.h"
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
 #include "components/icons/bookmark.h"
@@ -25,11 +26,11 @@
 #include "components/icons/library.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
+#include "components/icons/stats.h"
+#include "components/icons/tarot-card.h"
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/wifi.h"
-#include "components/icons/apps.h"
-#include "components/icons/tarot-card.h"
 #include "fontIds.h"
 
 // Internal constants
@@ -84,7 +85,7 @@ const uint8_t* iconForName(UIIcon icon, int size) {
       case UIIcon::Tarot:
         return TarotCard;
       case UIIcon::Heatmap:
-        return RecentIcon;
+        return StatsIcon;
       default:
         return nullptr;
     }
@@ -556,8 +557,7 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
 
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon,
-                               const std::function<std::string(int index)>& buttonSubtitle) const {
+                               const std::function<UIIcon(int index)>& rowIcon) const {
   for (int i = 0; i < buttonCount; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
     Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
@@ -574,11 +574,7 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const char* label = labelStr.c_str();
     int textX = tileRect.x + 16;
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
-    
-    if (buttonSubtitle != nullptr) {
-      textY = tileRect.y + 10;
-    }
+    const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
@@ -589,11 +585,15 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
       }
     }
 
-    renderer.drawText(UI_12_FONT_ID, textX, textY, label, true, EpdFontFamily::BOLD);
-    
-    if (buttonSubtitle != nullptr) {
-      std::string subtitle = buttonSubtitle(i);
-      renderer.drawText(SMALL_FONT_ID, textX, textY + lineHeight + 2, subtitle.c_str(), true);
-    }
+    renderer.drawText(UI_12_FONT_ID, textX, textY, label, true);
   }
+}
+
+void LyraTheme::drawHomeStatusLine(const GfxRenderer& renderer, const Rect rect, const char* text) const {
+  if (text == nullptr || text[0] == '\0') return;
+  // Left half of the battery row; the battery and its percentage sit on the right.
+  const int maxWidth = rect.width / 2 - LyraMetrics::values.contentSidePadding;
+  const auto line = renderer.truncatedText(SMALL_FONT_ID, text, maxWidth);
+  const int y = rect.y + 5 + (LyraMetrics::values.batteryHeight - renderer.getLineHeight(SMALL_FONT_ID)) / 2;
+  renderer.drawText(SMALL_FONT_ID, rect.x + LyraMetrics::values.contentSidePadding, y, line.c_str(), true);
 }

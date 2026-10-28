@@ -1,263 +1,238 @@
 /**
  * ReadingStatsAnalyticsTest.cpp
  *
- * Host unit tests for streak math in ReadingStatsAnalytics.
- * Covers all edge cases from spec §7:
- *   - empty history
- *   - only-today
- *   - consecutive days ending today
- *   - read yesterday not today (alive)
- *   - full day skipped (broken)
- *   - gap in middle
- *   - unsorted + duplicate dates
- *   - clock-went-backwards
+ * Host unit tests for ReadingStatsAnalytics: streak math over day-sorted
+ * history and the calendar conversions the heatmap relies on.
+ *   - empty history, only today, consecutive runs, yesterday-alive, broken
+ *   - gaps, duplicate days, zero-minute days
+ *   - clock went backwards / clock unknown
+ *   - month, year and leap-year boundaries
  */
 
-#include <cassert>
 #include <cstdio>
-#include <string>
 #include <vector>
 
-#include "ReadingStatsStore.h"
 #include "util/ReadingStatsAnalytics.h"
+
+using namespace ReadingStatsAnalytics;
 
 static int testsPassed = 0;
 static int testsFailed = 0;
 
-#define ASSERT_EQ(a, b)                                                                            \
-  do {                                                                                             \
-    auto _a = (a);                                                                                 \
-    auto _b = (b);                                                                                 \
-    if (_a != _b) {                                                                                \
-      fprintf(stderr, "  FAIL: %s:%d: %s == %u, expected %u\n", __FILE__, __LINE__, #a,            \
-              (unsigned)_a, (unsigned)_b);                                                         \
-      testsFailed++;                                                                               \
-      return;                                                                                      \
-    }                                                                                              \
+#define ASSERT_EQ(a, b)                                                                                        \
+  do {                                                                                                         \
+    auto _a = (a);                                                                                             \
+    auto _b = (b);                                                                                             \
+    if (_a != _b) {                                                                                            \
+      fprintf(stderr, "  FAIL: %s:%d: %s == %ld, expected %ld\n", __FILE__, __LINE__, #a, (long)_a, (long)_b); \
+      testsFailed++;                                                                                           \
+      return;                                                                                                  \
+    }                                                                                                          \
   } while (0)
 
 #define PASS() testsPassed++
 
-// Helper: build a ReadingDayStats entry for a given date with some reading activity.
-static ReadingDayStats makeDay(const std::string& date, uint32_t minutes = 30) {
-  ReadingDayStats d;
-  d.date = date;
-  d.totalMinutes = minutes;
-  return d;
+static int32_t D(int32_t y, uint32_t m, uint32_t d) { return daysFromCivil(y, m, d); }
+
+static ReadingDay day(int32_t y, uint32_t m, uint32_t d, uint16_t minutes = 30) {
+  return ReadingDay{static_cast<uint16_t>(D(y, m, d)), minutes};
 }
 
-// ---- getCurrentStreak tests ----
+// ---- calendar ----
+
+void testCivilRoundTrip() {
+  printf("  civil: epoch and round trips\n");
+  ASSERT_EQ(D(1970, 1, 1), 0);
+  ASSERT_EQ(D(2000, 3, 1), 11017);
+  for (int32_t n = -1000; n < 80000; n += 37) {
+    int32_t y;
+    uint32_t m, d;
+    civilFromDays(n, y, m, d);
+    ASSERT_EQ(D(y, m, d), n);
+  }
+  PASS();
+}
+
+void testWeekday() {
+  printf("  civil: weekday (Monday = 0)\n");
+  ASSERT_EQ(weekdayMondayFirst(D(1970, 1, 1)), 3u);    // Thursday
+  ASSERT_EQ(weekdayMondayFirst(D(2026, 10, 26)), 0u);  // Monday
+  ASSERT_EQ(weekdayMondayFirst(D(2026, 11, 1)), 6u);   // Sunday
+  PASS();
+}
+
+void testDaysInMonth() {
+  printf("  civil: days in month incl. leap years\n");
+  ASSERT_EQ(daysInMonth(2026, 2), 28u);
+  ASSERT_EQ(daysInMonth(2028, 2), 29u);
+  ASSERT_EQ(daysInMonth(2100, 2), 28u);
+  ASSERT_EQ(daysInMonth(2000, 2), 29u);
+  ASSERT_EQ(daysInMonth(2026, 4), 30u);
+  ASSERT_EQ(daysInMonth(2026, 12), 31u);
+  ASSERT_EQ(daysInMonth(2026, 13), 0u);
+  PASS();
+}
+
+// ---- getCurrentStreak ----
 
 void testEmptyHistory_currentStreak() {
-  printf("  getCurrentStreak: empty history → 0\n");
-  std::vector<ReadingDayStats> history;
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 0u);
+  printf("  getCurrentStreak: empty history -> 0\n");
+  ASSERT_EQ(getCurrentStreak({}, D(2026, 7, 20)), 0u);
   PASS();
 }
 
 void testOnlyToday_currentStreak() {
-  printf("  getCurrentStreak: only today → 1\n");
-  std::vector<ReadingDayStats> history = {makeDay("2026-07-20")};
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 1u);
+  printf("  getCurrentStreak: only today -> 1\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 20)}, D(2026, 7, 20)), 1u);
   PASS();
 }
 
 void testThreeConsecutiveDaysEndingToday() {
-  printf("  getCurrentStreak: 3 consecutive days ending today → 3\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-18"),
-      makeDay("2026-07-19"),
-      makeDay("2026-07-20"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 3u);
+  printf("  getCurrentStreak: 3 consecutive days ending today -> 3\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 18), day(2026, 7, 19), day(2026, 7, 20)}, D(2026, 7, 20)), 3u);
   PASS();
 }
 
 void testReadYesterdayNotToday() {
-  printf("  getCurrentStreak: read yesterday not today → streak alive\n");
-  // Read 3 consecutive days ending yesterday (Jul 19), today is Jul 20
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-17"),
-      makeDay("2026-07-18"),
-      makeDay("2026-07-19"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 3u);
+  printf("  getCurrentStreak: read yesterday not today -> streak alive\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 17), day(2026, 7, 18), day(2026, 7, 19)}, D(2026, 7, 20)), 3u);
   PASS();
 }
 
 void testFullDaySkipped() {
-  printf("  getCurrentStreak: full day skipped → 0\n");
-  // Last reading was 2 days ago (Jul 18), today is Jul 20 → missed a full day
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-17"),
-      makeDay("2026-07-18"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 0u);
+  printf("  getCurrentStreak: full day skipped -> 0\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 17), day(2026, 7, 18)}, D(2026, 7, 20)), 0u);
   PASS();
 }
 
 void testGapInMiddle_currentStreak() {
-  printf("  getCurrentStreak: gap in middle → only latest run\n");
-  // Read Mon, skip Tue, read Wed-Thu (today)
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-14"),  // Mon
-      // skip Tue Jul 15
-      makeDay("2026-07-16"),  // Wed
-      makeDay("2026-07-17"),  // Thu (today)
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-17"), 2u);
+  printf("  getCurrentStreak: gap in middle -> only latest run\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 14), day(2026, 7, 16), day(2026, 7, 17)}, D(2026, 7, 17)), 2u);
   PASS();
 }
 
-void testUnsortedAndDuplicates_currentStreak() {
-  printf("  getCurrentStreak: unsorted + duplicate dates → handled\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-20", 15),
-      makeDay("2026-07-18"),
-      makeDay("2026-07-19"),
-      makeDay("2026-07-20", 10),  // duplicate
-      makeDay("2026-07-19", 5),   // duplicate
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 3u);
+void testDuplicateDays_currentStreak() {
+  printf("  getCurrentStreak: duplicate days -> counted once\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 18), day(2026, 7, 19), day(2026, 7, 19), day(2026, 7, 20)}, D(2026, 7, 20)),
+            3u);
   PASS();
 }
 
 void testClockWentBackwards_currentStreak() {
-  printf("  getCurrentStreak: clock went backwards → anchors on latest date, no crash\n");
-  // history.back().date is "2026-07-22" but today is "2026-07-20" (clock went back)
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-20"),
-      makeDay("2026-07-21"),
-      makeDay("2026-07-22"),
-  };
-  // Should anchor on latest date (2026-07-22) and count the run
-  auto result = ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20");
-  // The spec says "treat the latest recorded date as the anchor rather than returning 0"
-  // The 3 dates are consecutive, so streak = 3
-  ASSERT_EQ(result, 3u);
+  printf("  getCurrentStreak: clock went backwards -> anchors on newest day\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 20), day(2026, 7, 21), day(2026, 7, 22)}, D(2026, 7, 20)), 3u);
+  PASS();
+}
+
+void testClockUnknown_currentStreak() {
+  printf("  getCurrentStreak: clock unknown -> anchors on newest day\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 21), day(2026, 7, 22)}, -1), 2u);
   PASS();
 }
 
 void testZeroMinuteDay_currentStreak() {
-  printf("  getCurrentStreak: day with 0 minutes → not counted\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-18"),
-      makeDay("2026-07-19", 0),  // 0 minutes = no real reading
-      makeDay("2026-07-20"),
-  };
-  // Day with 0 minutes should not count as a reading day
-  ASSERT_EQ(ReadingStatsAnalytics::getCurrentStreak(history, "2026-07-20"), 1u);
+  printf("  getCurrentStreak: day with 0 minutes -> not counted\n");
+  ASSERT_EQ(getCurrentStreak({day(2026, 7, 18), day(2026, 7, 19, 0), day(2026, 7, 20)}, D(2026, 7, 20)), 1u);
   PASS();
 }
 
-// ---- getBestStreak tests ----
+// ---- getBestStreak ----
 
 void testEmptyHistory_bestStreak() {
-  printf("  getBestStreak: empty history → 0\n");
-  std::vector<ReadingDayStats> history;
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 0u);
+  printf("  getBestStreak: empty history -> 0\n");
+  ASSERT_EQ(getBestStreak({}), 0u);
   PASS();
 }
 
 void testOnlyToday_bestStreak() {
-  printf("  getBestStreak: single day → 1\n");
-  std::vector<ReadingDayStats> history = {makeDay("2026-07-20")};
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 1u);
+  printf("  getBestStreak: single day -> 1\n");
+  ASSERT_EQ(getBestStreak({day(2026, 7, 20)}), 1u);
   PASS();
 }
 
 void testGapInMiddle_bestStreak() {
-  printf("  getBestStreak: gap in middle → longest run\n");
-  // 3-day run, gap, 2-day run → best = 3
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-10"),
-      makeDay("2026-07-11"),
-      makeDay("2026-07-12"),
-      // gap
-      makeDay("2026-07-15"),
-      makeDay("2026-07-16"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 3u);
+  printf("  getBestStreak: earlier run longer than later run\n");
+  ASSERT_EQ(getBestStreak({day(2026, 7, 1), day(2026, 7, 2), day(2026, 7, 3), day(2026, 7, 5), day(2026, 7, 6)}), 3u);
   PASS();
 }
 
 void testLaterRunIsLonger_bestStreak() {
-  printf("  getBestStreak: later run is longer → returns that\n");
-  // 2-day run, gap, 4-day run → best = 4
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-10"),
-      makeDay("2026-07-11"),
-      // gap
-      makeDay("2026-07-15"),
-      makeDay("2026-07-16"),
-      makeDay("2026-07-17"),
-      makeDay("2026-07-18"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 4u);
+  printf("  getBestStreak: later run longer than earlier run\n");
+  ASSERT_EQ(getBestStreak({day(2026, 7, 1), day(2026, 7, 3), day(2026, 7, 4), day(2026, 7, 5), day(2026, 7, 6)}), 4u);
   PASS();
 }
 
-void testUnsortedAndDuplicates_bestStreak() {
-  printf("  getBestStreak: unsorted + duplicate dates → handled\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-12"),
-      makeDay("2026-07-10"),
-      makeDay("2026-07-11"),
-      makeDay("2026-07-11", 5),  // duplicate
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 3u);
+void testDuplicateDays_bestStreak() {
+  printf("  getBestStreak: duplicate days -> counted once\n");
+  ASSERT_EQ(getBestStreak({day(2026, 7, 1), day(2026, 7, 1), day(2026, 7, 2)}), 2u);
   PASS();
 }
 
 void testZeroMinuteDay_bestStreak() {
-  printf("  getBestStreak: 0-minute day breaks streak\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-07-10"),
-      makeDay("2026-07-11"),
-      makeDay("2026-07-12", 0),  // 0 minutes = not a real reading day
-      makeDay("2026-07-13"),
-  };
-  // 10,11 = 2-day run; 12 is 0 min (not counted); 13 = 1-day run → best = 2
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 2u);
+  printf("  getBestStreak: zero-minute day breaks the run\n");
+  ASSERT_EQ(getBestStreak({day(2026, 7, 1), day(2026, 7, 2, 0), day(2026, 7, 3), day(2026, 7, 4)}), 2u);
   PASS();
 }
 
 void testMonthBoundary_bestStreak() {
-  printf("  getBestStreak: streak crossing month boundary\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2026-06-29"),
-      makeDay("2026-06-30"),
-      makeDay("2026-07-01"),
-      makeDay("2026-07-02"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 4u);
+  printf("  getBestStreak: run crossing a month boundary\n");
+  ASSERT_EQ(getBestStreak({day(2026, 6, 29), day(2026, 6, 30), day(2026, 7, 1), day(2026, 7, 2)}), 4u);
   PASS();
 }
 
 void testYearBoundary_bestStreak() {
-  printf("  getBestStreak: streak crossing year boundary\n");
-  std::vector<ReadingDayStats> history = {
-      makeDay("2025-12-30"),
-      makeDay("2025-12-31"),
-      makeDay("2026-01-01"),
-      makeDay("2026-01-02"),
-  };
-  ASSERT_EQ(ReadingStatsAnalytics::getBestStreak(history), 4u);
+  printf("  getBestStreak: run crossing a year boundary\n");
+  ASSERT_EQ(getBestStreak({day(2025, 12, 30), day(2025, 12, 31), day(2026, 1, 1), day(2026, 1, 2)}), 4u);
+  PASS();
+}
+
+void testLeapDay_bestStreak() {
+  printf("  getBestStreak: run across Feb 29\n");
+  ASSERT_EQ(getBestStreak({day(2028, 2, 28), day(2028, 2, 29), day(2028, 3, 1)}), 3u);
+  PASS();
+}
+
+// ---- lookups ----
+
+void testMinutesOnDay() {
+  printf("  getMinutesOnDay: hit, miss, unknown day\n");
+  const std::vector<ReadingDay> days = {day(2026, 7, 1, 12), day(2026, 7, 3, 45)};
+  ASSERT_EQ(getMinutesOnDay(days, D(2026, 7, 3)), 45);
+  ASSERT_EQ(getMinutesOnDay(days, D(2026, 7, 2)), 0);
+  ASSERT_EQ(getMinutesOnDay(days, -1), 0);
+  PASS();
+}
+
+void testHeatLevels() {
+  printf("  getHeatLevel: relative to a 30 minute goal\n");
+  ASSERT_EQ(getHeatLevel(0, 30), 0);
+  ASSERT_EQ(getHeatLevel(1, 30), 1);
+  ASSERT_EQ(getHeatLevel(14, 30), 1);
+  ASSERT_EQ(getHeatLevel(15, 30), 2);
+  ASSERT_EQ(getHeatLevel(29, 30), 2);
+  ASSERT_EQ(getHeatLevel(30, 30), 3);
+  ASSERT_EQ(getHeatLevel(5, 0), 3);
   PASS();
 }
 
 int main() {
   printf("=== Reading Stats Analytics Tests ===\n\n");
 
-  printf("getCurrentStreak:\n");
+  printf("calendar:\n");
+  testCivilRoundTrip();
+  testWeekday();
+  testDaysInMonth();
+
+  printf("\ngetCurrentStreak:\n");
   testEmptyHistory_currentStreak();
   testOnlyToday_currentStreak();
   testThreeConsecutiveDaysEndingToday();
   testReadYesterdayNotToday();
   testFullDaySkipped();
   testGapInMiddle_currentStreak();
-  testUnsortedAndDuplicates_currentStreak();
+  testDuplicateDays_currentStreak();
   testClockWentBackwards_currentStreak();
+  testClockUnknown_currentStreak();
   testZeroMinuteDay_currentStreak();
 
   printf("\ngetBestStreak:\n");
@@ -265,10 +240,15 @@ int main() {
   testOnlyToday_bestStreak();
   testGapInMiddle_bestStreak();
   testLaterRunIsLonger_bestStreak();
-  testUnsortedAndDuplicates_bestStreak();
+  testDuplicateDays_bestStreak();
   testZeroMinuteDay_bestStreak();
   testMonthBoundary_bestStreak();
   testYearBoundary_bestStreak();
+  testLeapDay_bestStreak();
+
+  printf("\nlookups:\n");
+  testMinutesOnDay();
+  testHeatLevels();
 
   printf("\n=== Results: %d passed, %d failed ===\n", testsPassed, testsFailed);
   return testsFailed > 0 ? 1 : 0;

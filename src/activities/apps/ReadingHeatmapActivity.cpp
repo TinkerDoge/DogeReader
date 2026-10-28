@@ -1,174 +1,180 @@
 #include "ReadingHeatmapActivity.h"
+
 #include <GfxRenderer.h>
 #include <I18n.h>
-#include <Logging.h>
+
+#include <algorithm>
+
+#include "ReadingStatsFormat.h"
+#include "ReadingStatsStore.h"
 #include "components/UITheme.h"
-#include "../../util/ReadingStatsAnalytics.h"
-#include "ReadingStatsActivity.h"
-#include "../../fontIds.h"
+#include "fontIds.h"
+
+namespace {
+constexpr int CELL_GAP = 6;
+constexpr int CELL_TEXT_INSET = 4;
+constexpr int SECTION_GAP = 14;
+constexpr int LEGEND_SWATCH = 18;
+constexpr int LEGEND_ITEM_GAP = 18;
+constexpr int MAX_WEEK_ROWS = 6;
+
+// Today if the clock is set, otherwise the newest recorded day (-1 if none).
+int32_t anchorDay() {
+  const int32_t today = ReadingStatsStore::currentLocalDay();
+  if (today >= 0) return today;
+  const auto& days = READING_STATS.getDays();
+  return days.empty() ? -1 : days.back().day;
+}
+}  // namespace
 
 void ReadingHeatmapActivity::onEnter() {
   Activity::onEnter();
-  READING_STATS.loadFromFile();
-  
-  time_t now = time(nullptr);
-  struct tm* t = localtime(&now);
-  currentMonth = t->tm_mon + 1;
-  currentYear = t->tm_year + 1900;
-  
+  showMonthOf(anchorDay());
   requestUpdate();
 }
 
-void ReadingHeatmapActivity::onExit() {
-  Activity::onExit();
+void ReadingHeatmapActivity::showMonthOf(const int32_t day) {
+  if (day < 0) {
+    month = 0;
+    return;
+  }
+  uint32_t dayOfMonth;
+  ReadingStatsAnalytics::civilFromDays(day, year, month, dayOfMonth);
+}
+
+void ReadingHeatmapActivity::shiftMonth(const int delta) {
+  if (month == 0) return;
+  const int32_t index = year * 12 + static_cast<int32_t>(month) - 1 + delta;
+  year = index / 12;
+  month = static_cast<uint32_t>(index % 12) + 1;
+  requestUpdate();
 }
 
 void ReadingHeatmapActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    activityManager.popActivity();
+    finish();
+    return;
   }
-  
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-    if (--currentMonth == 0) {
-      currentMonth = 12;
-      currentYear--;
-    }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    shiftMonth(-1);
+  } else if (mappedInput.wasReleased(MappedInputManager::Button::Right) ||
+             mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    shiftMonth(1);
+  } else if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    showMonthOf(anchorDay());
     requestUpdate();
-  }
-  
-  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    if (++currentMonth == 13) {
-      currentMonth = 1;
-      currentYear++;
-    }
-    requestUpdate();
-  }
-
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    // Navigate back to Stats
-    activityManager.pushActivity(std::make_unique<ReadingStatsActivity>(renderer, mappedInput));
   }
 }
 
 void ReadingHeatmapActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth = renderer.getScreenWidth();
-  const auto pageHeight = renderer.getScreenHeight();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
 
   renderer.clearScreen();
 
-  char titleBuf[32];
-  snprintf(titleBuf, sizeof(titleBuf), "%02d/%04d", currentMonth, currentYear);
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, titleBuf);
+  char title[40];
+  if (month == 0) {
+    snprintf(title, sizeof(title), "%s", tr(STR_STATS_CALENDAR));
+  } else {
+    snprintf(title, sizeof(title), "%s %d", ReadingStatsFormat::monthName(month), static_cast<int>(year));
+  }
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title);
 
-  drawGrid();
-  drawLegend();
+  const int top = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int bottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  if (month == 0) {
+    UITheme::drawCenteredWrappedText(
+        renderer, Rect{metrics.contentSidePadding, top, pageWidth - 2 * metrics.contentSidePadding, bottom - top},
+        UI_10_FONT_ID, tr(STR_STATS_CLOCK_UNKNOWN), 4);
+  } else {
+    drawCalendar(metrics, top, bottom);
+  }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), "Stats", tr(STR_PREV), tr(STR_NEXT));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TODAY), tr(STR_PREV), tr(STR_NEXT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  renderer.displayBuffer(firstRenderDone ? HalDisplay::FAST_REFRESH : HalDisplay::FULL_REFRESH);
-  firstRenderDone = true;
+  renderer.displayBuffer();
 }
 
-void ReadingHeatmapActivity::drawGrid() {
-  auto monthStats = READING_STATS.getStatsForMonth(currentMonth, currentYear);
-  std::map<int, uint32_t> dayMins;
-  uint32_t monthTotal = 0;
-  uint32_t daysRead = 0;
-  uint32_t bestDay = 0;
+void ReadingHeatmapActivity::drawCalendar(const ThemeMetrics& metrics, int y, const int bottom) const {
+  const int left = metrics.contentSidePadding;
+  const int contentWidth = renderer.getScreenWidth() - 2 * metrics.contentSidePadding;
+  const int smallHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  const auto& days = READING_STATS.getDays();
+  const uint32_t goal = READING_STATS.getDailyGoalMinutes();
+  const int32_t today = ReadingStatsStore::currentLocalDay();
 
-  for (const auto& day : monthStats) {
-    int d = atoi(day.date.substr(8, 2).c_str());
-    dayMins[d] = day.totalMinutes;
-    monthTotal += day.totalMinutes;
-    if (day.totalMinutes > 0) daysRead++;
-    if (day.totalMinutes > bestDay) bestDay = day.totalMinutes;
-  }
+  const int32_t firstDay = ReadingStatsAnalytics::daysFromCivil(year, month, 1);
+  const int monthLength = static_cast<int>(ReadingStatsAnalytics::daysInMonth(year, month));
+  const int offset = static_cast<int>(ReadingStatsAnalytics::weekdayMondayFirst(firstDay));
+  const int rows = (offset + monthLength + 6) / 7;
 
-  // Draw Header Stats
-  const int statsY = 100;
-  char buf1[64], buf2[64];
-  snprintf(buf1, sizeof(buf1), "Total: %dh %dm", monthTotal / 60, monthTotal % 60);
-  snprintf(buf2, sizeof(buf2), "Read: %d days", daysRead);
-  renderer.drawText(UI_10_FONT_ID, 20, statsY, buf1, true);
-  renderer.drawText(UI_10_FONT_ID, 240, statsY, buf2, true);
-
-  // Calendar Logic
-  struct tm firstDay = {0};
-  firstDay.tm_mday = 1;
-  firstDay.tm_mon = currentMonth - 1;
-  firstDay.tm_year = currentYear - 1900;
-  firstDay.tm_isdst = -1;
-  mktime(&firstDay);
-  
-  int startDayOfWeek = (firstDay.tm_wday + 6) % 7; // Adjust to Monday start
-  int daysInMonth = 31;
-  if (currentMonth == 4 || currentMonth == 6 || currentMonth == 9 || currentMonth == 11) daysInMonth = 30;
-  else if (currentMonth == 2) {
-    daysInMonth = (currentYear % 4 == 0 && (currentYear % 100 != 0 || currentYear % 400 == 0)) ? 29 : 28;
-  }
-
-  const int cellSize = 58;
-  const int spacing = 6;
-  const int startX = 20;
-  const int startY = 160;
-
-  // Day Labels
-  const char* dayLabels[] = {"M", "T", "W", "T", "F", "S", "S"};
-  for (int i = 0; i < 7; i++) {
-    renderer.drawText(UI_10_FONT_ID, startX + i * (cellSize + spacing) + 20, startY - 30, dayLabels[i], true);
-  }
-
-  for (int i = 0; i < daysInMonth; i++) {
-    int dayNum = i + 1;
-    int pos = i + startDayOfWeek;
-    int col = pos % 7;
-    int row = pos / 7;
-    
-    int x = startX + col * (cellSize + spacing);
-    int y = startY + row * (cellSize + spacing);
-
-    uint32_t mins = dayMins[dayNum];
-    uint8_t heat = ReadingStatsAnalytics::getHeatLevel(mins);
-
-    Color color = White;
-    if (heat == 1) color = LightGray;
-    else if (heat == 2) color = static_cast<Color>(0x08);
-    else if (heat == 3) color = DarkGray;
-    else if (heat == 4) color = Black;
-
-    if (color == Black) {
-      renderer.fillRect(x, y, cellSize, cellSize, true);
-    } else {
-      if (heat > 0) renderer.fillRectDither(x, y, cellSize, cellSize, color);
-      renderer.drawRect(x, y, cellSize, cellSize, true);
+  // Month summary: total time and number of reading days.
+  uint32_t monthMinutes = 0;
+  uint32_t readingDays = 0;
+  for (const auto& entry : days) {
+    if (entry.day >= firstDay && entry.day < firstDay + monthLength && entry.minutes > 0) {
+      monthMinutes += entry.minutes;
+      readingDays++;
     }
-    
-    char dayBuf[4];
-    snprintf(dayBuf, sizeof(dayBuf), "%d", dayNum);
-    renderer.drawText(UI_10_FONT_ID, x + 5, y + 5, dayBuf, color == Black ? false : true);
   }
-}
+  char duration[24], summary[64];
+  ReadingStatsFormat::formatDuration(duration, sizeof(duration), monthMinutes);
+  snprintf(summary, sizeof(summary), tr(STR_STATS_MONTH_SUMMARY_FORMAT), duration, static_cast<unsigned>(readingDays));
+  renderer.drawText(UI_10_FONT_ID, left, y, summary, true);
+  y += textHeight + SECTION_GAP;
 
-void ReadingHeatmapActivity::drawLegend() {
-  const int legendY = 660; // Slightly lower
-  const int startX = 40;
-  const int boxSize = 24;
-  const int spacing = 105;
+  // Square cells sized to fit both the width and the height left above the legend.
+  const int legendHeight = std::max(LEGEND_SWATCH, smallHeight);
+  const int gridTop = y + smallHeight + CELL_GAP;
+  const int availableHeight = bottom - legendHeight - SECTION_GAP - gridTop;
+  const int cellByWidth = (contentWidth - 6 * CELL_GAP) / 7;
+  const int cellByHeight = (availableHeight - (MAX_WEEK_ROWS - 1) * CELL_GAP) / MAX_WEEK_ROWS;
+  const int cell = std::max(smallHeight + 2 * CELL_TEXT_INSET, std::min(cellByWidth, cellByHeight));
+  const int gridLeft = left + (contentWidth - (7 * cell + 6 * CELL_GAP)) / 2;
 
-  auto drawLegendItem = [&](int x, Color color, const char* label) {
-    if (color == Black) {
-      renderer.fillRect(x, legendY, boxSize, boxSize, true);
-    } else if (color != White) {
-      renderer.fillRectDither(x, legendY, boxSize, boxSize, color);
+  for (int col = 0; col < 7; col++) {
+    const char* label = ReadingStatsFormat::weekdayShort(col);
+    const int labelX = gridLeft + col * (cell + CELL_GAP) + (cell - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2;
+    renderer.drawText(SMALL_FONT_ID, labelX, y, label, true);
+  }
+
+  for (int i = 0; i < monthLength; i++) {
+    const int position = offset + i;
+    const int x = gridLeft + (position % 7) * (cell + CELL_GAP);
+    const int cellY = gridTop + (position / 7) * (cell + CELL_GAP);
+    const int32_t day = firstDay + i;
+    const uint8_t level = ReadingStatsAnalytics::getHeatLevel(ReadingStatsAnalytics::getMinutesOnDay(days, day), goal);
+
+    ReadingStatsFormat::fillHeat(renderer, x, cellY, cell, cell, level);
+    renderer.drawRect(x, cellY, cell, cell, true);
+    if (day == today) {
+      renderer.drawRect(x + 2, cellY + 2, cell - 4, cell - 4, 2, level < 2);  // white ring on dark cells
     }
-    renderer.drawRect(x, legendY, boxSize, boxSize, true);
-    renderer.drawText(UI_10_FONT_ID, x + boxSize + 10, legendY + 5, label, true);
-  };
 
-  drawLegendItem(startX, LightGray, "1m+");
-  drawLegendItem(startX + spacing, static_cast<Color>(0x08), "10m+");
-  drawLegendItem(startX + 2 * spacing, DarkGray, "30m+");
-  drawLegendItem(startX + 3 * spacing, Black, "60m+");
+    char number[4];
+    snprintf(number, sizeof(number), "%d", i + 1);
+    // Dark-gray dither swallows black text, so give the number a white backing;
+    // solid black cells (goal met) get white text instead.
+    if (level == 2) {
+      const int numberWidth = renderer.getTextWidth(SMALL_FONT_ID, number);
+      renderer.fillRect(x + CELL_TEXT_INSET - 1, cellY + CELL_TEXT_INSET, numberWidth + 2, smallHeight, false);
+    }
+    renderer.drawText(SMALL_FONT_ID, x + CELL_TEXT_INSET, cellY + CELL_TEXT_INSET, number, level < 3);
+  }
+
+  // Legend
+  const int legendY = gridTop + rows * (cell + CELL_GAP) - CELL_GAP + SECTION_GAP;
+  const char* legendLabels[3] = {tr(STR_STATS_LEGEND_SOME), tr(STR_STATS_LEGEND_HALF), tr(STR_STATS_LEGEND_GOAL)};
+  int legendX = gridLeft;
+  for (int level = 1; level <= 3; level++) {
+    ReadingStatsFormat::fillHeat(renderer, legendX, legendY, LEGEND_SWATCH, LEGEND_SWATCH, static_cast<uint8_t>(level));
+    renderer.drawRect(legendX, legendY, LEGEND_SWATCH, LEGEND_SWATCH, true);
+    legendX += LEGEND_SWATCH + CELL_TEXT_INSET * 2;
+    const char* label = legendLabels[level - 1];
+    renderer.drawText(SMALL_FONT_ID, legendX, legendY + (LEGEND_SWATCH - smallHeight) / 2, label, true);
+    legendX += renderer.getTextWidth(SMALL_FONT_ID, label) + LEGEND_ITEM_GAP;
+  }
 }

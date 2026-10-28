@@ -16,10 +16,8 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
-#include "util/ShortcutRegistry.h"
-#include "../apps/ReadingStatsActivity.h"
-#include "../apps/ReadingHeatmapActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -121,9 +119,26 @@ void HomeActivity::onEnter() {
 
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
+  updateReadingStatusLine();
 
   // Trigger first update
   requestUpdate();
+}
+
+void HomeActivity::updateReadingStatusLine() {
+  readingStatusLine[0] = '\0';
+  // Without a date there is no "today", so say nothing rather than something wrong.
+  if (ReadingStatsStore::currentLocalDay() < 0) return;
+
+  const auto today = static_cast<unsigned>(READING_STATS.getTodayMinutes());
+  const auto streak = static_cast<unsigned>(READING_STATS.getCurrentStreak());
+  if (today > 0 && streak > 1) {
+    snprintf(readingStatusLine, sizeof(readingStatusLine), tr(STR_STATS_HOME_FORMAT), today, streak);
+  } else if (today > 0) {
+    snprintf(readingStatusLine, sizeof(readingStatusLine), tr(STR_STATS_HOME_TODAY_FORMAT), today);
+  } else if (streak > 1) {
+    snprintf(readingStatusLine, sizeof(readingStatusLine), tr(STR_STATS_HOME_STREAK_FORMAT), streak);
+  }
 }
 
 void HomeActivity::onExit() {
@@ -292,6 +307,7 @@ void HomeActivity::render(RenderLock&&) {
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
+  GUI.drawHomeStatusLine(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.batteryBarHeight}, readingStatusLine);
 
   // Record the tile rect so storeCoverBuffer (called from the theme) knows
   // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait

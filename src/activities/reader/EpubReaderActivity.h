@@ -10,12 +10,13 @@
 #include "EpubReaderMenuActivity.h"
 #include "ProgressMapper.h"
 #include "activities/Activity.h"
+#include "util/ReadingSessionTimer.h"
 
 class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
-  uint32_t startTime = 0;  // millis() at onEnter; accrues reading minutes into READING_STATS on exit
+  ReadingSessionTimer readingTimer;  // active reading time, recorded into READING_STATS on exit
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
   // Set when navigating to a footnote href with a fragment (e.g. #note1).

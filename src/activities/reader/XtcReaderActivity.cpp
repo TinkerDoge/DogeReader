@@ -19,15 +19,15 @@
 #include "MappedInputManager.h"
 #include "ProgressFile.h"
 #include "ReaderUtils.h"
-#include "RecentBooksStore.h"
 #include "ReadingStatsStore.h"
+#include "RecentBooksStore.h"
 #include "XtcReaderChapterSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
 void XtcReaderActivity::onEnter() {
   Activity::onEnter();
-  startTime = millis();
+  readingTimer.start(millis());
 
   if (!xtc) {
     return;
@@ -50,18 +50,9 @@ void XtcReaderActivity::onEnter() {
 void XtcReaderActivity::onExit() {
   Activity::onExit();
 
-  if (startTime > 0) {
-    uint32_t minutes = (millis() - startTime) / 60000;
-    if (minutes > 0) {
-      READING_STATS.addMinutes(minutes, xtc->getPath());
-    }
-  }
-
-  // Record the last-known book progress for the Stats screen.
-  if (xtc && xtc->getPageCount() > 0) {
-    uint8_t pct = static_cast<uint8_t>((currentPage + 1) * 100 / xtc->getPageCount());
-    if (pct > 100) pct = 100;
-    READING_STATS.recordProgress(xtc->getPath(), pct);
+  if (xtc) {
+    const int percent = xtc->getPageCount() > 0 ? static_cast<int>((currentPage + 1) * 100 / xtc->getPageCount()) : -1;
+    READING_STATS.recordSession(xtc->getPath().c_str(), readingTimer.finishMinutes(millis()), percent);
   }
 
   APP_STATE.readerActivityLoadCount = 0;
@@ -173,6 +164,7 @@ void XtcReaderActivity::render(RenderLock&&) {
   if (!xtc) {
     return;
   }
+  readingTimer.tick(millis());
 
   // Bounds check
   if (currentPage >= xtc->getPageCount()) {

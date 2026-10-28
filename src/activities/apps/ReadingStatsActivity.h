@@ -1,31 +1,32 @@
 #pragma once
-#include <vector>
+#include <cstdint>
 #include <string>
+#include <vector>
+
 #include "../Activity.h"
-#include "util/ButtonNavigator.h"
 
+struct ThemeMetrics;
+
+// Summary tiles, a 7-day bar chart and per-book time for recently read books.
+// Confirm opens the month calendar.
 class ReadingStatsActivity final : public Activity {
-  ButtonNavigator buttonNavigator;
-  int selectorIndex = 0;
-  bool firstRenderDone = false;
-  
-  struct BookStat {
-    std::string path;
+  struct BookRow {
     std::string title;
-    uint32_t totalMinutes;
-    int progressPercent;
+    uint32_t minutes;
+    uint8_t percent;
   };
-  std::vector<BookStat> startedBooks;
+  std::vector<BookRow> bookRows;
+  bool firstRenderDone = false;
 
-  void loadStats();
-  void drawStatsHeader();
-  void drawBookList();
+  void loadBookRows();
+  int drawSummaryTiles(const ThemeMetrics& metrics, int y) const;
+  int drawWeekChart(const ThemeMetrics& metrics, int y) const;
+  void drawBookRows(const ThemeMetrics& metrics, int y, int bottom) const;
 
  public:
   explicit ReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("ReadingStats", renderer, mappedInput) {}
   void onEnter() override;
-  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
 };

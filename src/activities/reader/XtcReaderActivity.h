@@ -14,12 +14,13 @@
 
 #include "EndOfBookOptions.h"
 #include "activities/Activity.h"
+#include "util/ReadingSessionTimer.h"
 
 class XtcReaderActivity final : public Activity {
   std::shared_ptr<Xtc> xtc;
 
   uint32_t currentPage = 0;
-  uint32_t startTime = 0;  // millis() at onEnter; accrues reading minutes into READING_STATS on exit
+  ReadingSessionTimer readingTimer;  // active reading time, recorded into READING_STATS on exit
   int pagesUntilFullRefresh = 0;
   // Next-book suggestion menu for the End-of-Book screen
   EndOfBookOptions endOfBookOptions;

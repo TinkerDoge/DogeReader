@@ -1,40 +1,25 @@
 #pragma once
 
-#include <vector>
+#include <array>
 #include <cstdint>
 
+// A shuffled 78-card deck drawn one card at a time.
 class TarotDeck {
-public:
-    static const int DECK_SIZE = 78;
+ public:
+  static constexpr int DECK_SIZE = 78;
 
-    TarotDeck();
+  TarotDeck();
 
-    // Shuffles the deck and resets the current index
-    void shuffle();
+  // Shuffles all 78 cards and starts drawing from the top again.
+  void shuffle();
 
-    // Returns the ID of the next card (0-77). Returns -1 if no more cards.
-    int8_t drawNext();
+  // Returns the next card ID (0-77), or -1 once every card has been drawn.
+  int8_t drawNext();
 
-    // Returns the ID of the current card (the one most recently drawn)
-    int8_t getCurrent() const;
+  bool hasNext() const { return drawnCount < DECK_SIZE; }
+  int getDrawnCount() const { return drawnCount; }
 
-    // Returns true if there are cards left to draw in the current shuffled sequence
-    bool hasNext() const;
-
-    // Resets the current index to the beginning of the shuffled sequence
-    void reset();
-
-    // Returns a list of recently drawn card IDs (up to 'count' items)
-    // Most recent is at the beginning of the vector
-    std::vector<int8_t> getHistory(int count) const;
-
-    // Returns the ID of the card at a specific position in the history relative to current
-    // offset 0 is current, offset 1 is previous, etc.
-    int8_t getFromHistory(int offset) const;
-
-    int getCurrentIndex() const { return currentIndex; }
-
-private:
-    std::vector<int8_t> sequence;
-    int currentIndex; // Index of the card currently being shown (drawn)
+ private:
+  std::array<int8_t, DECK_SIZE> sequence{};
+  int drawnCount = 0;
 };

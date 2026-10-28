@@ -1,38 +1,40 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 #include "../Activity.h"
-#include "TarotDeck.h"
 #include "TarotAssets.h"
-#include "components/themes/BaseTheme.h"
-#include "util/ButtonNavigator.h"
+#include "TarotDeck.h"
 
-class TarotActivity : public Activity {
-public:
-    TarotActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+struct ThemeMetrics;
 
-    void onEnter() override;
-    void onExit() override;
-    void loop() override;
-    void render(RenderLock&& lock) override;
+class TarotActivity final : public Activity {
+ public:
+  TarotActivity(GfxRenderer& renderer, MappedInputManager& mappedInput) : Activity("Tarot", renderer, mappedInput) {}
 
-private:
-    TarotDeck deck;
-    TarotAssets assets;
-    enum class ViewState { DrawPrompt, Main, HistoryGrid };
-    ViewState viewState = ViewState::DrawPrompt;
+  void onEnter() override;
+  void loop() override;
+  void render(RenderLock&& lock) override;
 
-    bool showMeaning;
-    bool firstRenderDone;
-    bool isDrawing = false;
-    
-    // UI state
-    int8_t currentCardId;
-    std::vector<int8_t> history;
-    int gridPageIndex = 0;
+ private:
+  enum class ViewState { DrawPrompt, Main, HistoryGrid };
 
-    void drawNextCard();
-    void toggleMeaning();
-    void renderMain(const ThemeMetrics& metrics, int pageWidth, int pageHeight);
-    void renderGrid(const ThemeMetrics& metrics, int pageWidth, int pageHeight);
-    void renderPrompt(const ThemeMetrics& metrics, int pageWidth, int pageHeight);
+  TarotDeck deck;
+  TarotAssets assets;
+  ViewState viewState = ViewState::DrawPrompt;
+  bool assetsAvailable = false;
+  bool showMeaning = false;
+  bool reshuffled = false;
+  int8_t currentCardId = -1;
+  std::vector<int8_t> history;  // most recent first, at most one full deck
+  int gridPageIndex = 0;
+
+  void drawNextCard();
+  int gridItemsPerPage(const ThemeMetrics& metrics) const;
+  void renderPrompt(const ThemeMetrics& metrics) const;
+  void renderMain(const ThemeMetrics& metrics) const;
+  void renderMeaning(const ThemeMetrics& metrics) const;
+  void renderGrid(const ThemeMetrics& metrics) const;
+  void renderMissingAssets(const ThemeMetrics& metrics) const;
 };
