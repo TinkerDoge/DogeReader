@@ -24,8 +24,15 @@ A modern, rounded interface designed for clarity and aesthetics.
 - **Extended Home Screen**: View more books and info at a glance.
 - **High-Contrast Design**: Optimized for the X4's e-paper display.
 
-### 📊 Reading Activity Heatmap
-Track your reading habits with a visual activity heatmap, similar to GitHub's contribution graph. (Currently in preview).
+### 📊 Reading Stats
+Current and best streaks, today's progress toward a daily goal, a 7-day chart, time spent per book, and a
+month calendar shaded by how close each day came to the goal. Only active reading counts: time a book sits
+open untouched is capped, so leaving it open until auto-sleep doesn't inflate your stats.
+
+> [!NOTE]
+> The X4 has no real-time clock, so it forgets the date whenever it powers off. Daily stats (streaks, chart,
+> calendar) are only recorded after the clock has been set by connecting to Wi-Fi; total and per-book time
+> are always recorded.
 
 ### 🔄 Wireless Sync & Transfers
 - **KOReader Sync**: Seamlessly sync reading progress across devices (Phone, Tablet, Other Readers).
@@ -88,14 +95,16 @@ The `meanings.json` file should follow this structure:
 
 ## 🚀 Getting Started
 
-### Quick Flash (Web)
-1. Connect your Xteink X4 via USB-C.
-2. Visit [xteink.dve.al](https://xteink.dve.al/) and click **Flash DogeReader**.
+### Pre-built Firmware
+Each tagged release publishes `firmware.bin` on the
+[Releases](https://github.com/TinkerDoge/DogeReader/releases) page. Flash it over USB-C with `esptool`
+or any web flasher that accepts a custom firmware file. Once DogeReader is installed, later releases
+arrive through **Settings → Check for updates** (OTA).
 
-### Manual Installation
-If you prefer building from source:
+### Build from Source
 ```sh
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
+git clone --recursive https://github.com/TinkerDoge/DogeReader
+cd DogeReader
 pio run --target upload
 ```
 

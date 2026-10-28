@@ -359,7 +359,7 @@ JSON/file API. Full WebDAV surface via [WebDAVHandler](../src/network/WebDAVHand
 | POST | `/upload`, `/mkdir`, `/rename`, `/move`, `/delete` | File ops (`/delete` accepts JSON `paths[]`) |
 | WS | `START:name:size:path` → `READY` → binary chunks → `PROGRESS`/`DONE` | Fast upload |
 
-Served in **STA** (join WiFi, mDNS `crosspoint.local`) or **AP** (open `CrossPoint-Reader` hotspot, captive
+Served in **STA** (join WiFi, mDNS `crosspoint.local`) or **AP** (open `DogeReader` hotspot, captive
 portal). Web-server activities override `preventAutoSleep()`/`skipLoopDelay()` and run tight `handleClient()`
 loops with periodic watchdog resets. **Docs [webserver.md](webserver.md)/[webserver-endpoints.md](webserver-endpoints.md)
 omit `/download`, `/rename`, `/move`, `/settings`, WebDAV and UDP discovery — see backlog.**
