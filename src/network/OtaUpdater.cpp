@@ -18,7 +18,9 @@
 #include "FirmwareFlasher.h"
 
 namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
+// DogeReader's own releases. Pointing at upstream CrossPoint would offer its
+// builds as "updates" and silently replace this fork's features.
+constexpr char latestReleaseUrl[] = "https://api.github.com/repos/TinkerDoge/DogeReader/releases/latest";
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {

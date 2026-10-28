@@ -7,6 +7,9 @@ on:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    permissions:
+      # Needed to publish the GitHub Release that on-device OTA updates read.
+      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,16 +35,24 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
           restore-keys: pio-${{ runner.os }}-
 
-      - name: Build CrossPoint
+      - name: Build DogeReader
         run: pio run -e gh_release
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: CrossPoint-${{ github.ref_name }}
+          name: DogeReader-${{ github.ref_name }}
           path: |
             .pio/build/gh_release/bootloader.bin
             .pio/build/gh_release/firmware.bin
             .pio/build/gh_release/firmware.elf
             .pio/build/gh_release/firmware.map
             .pio/build/gh_release/partitions.bin
+
+      # OTA (src/network/OtaUpdater.cpp) reads the latest release of this repo and
+      # installs its firmware.bin asset when the tag's version is newer.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .pio/build/gh_release/firmware.bin
+          generate_release_notes: true
